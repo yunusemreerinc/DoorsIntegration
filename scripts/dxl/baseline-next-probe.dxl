@@ -1,0 +1,44 @@
+// Read-only deployment probe. No edit, save, create-baseline, unlock or discard.
+// Tests the otherwise unproven symbolic next-handle resolution on the actual client.
+string bpStatus = "BLOCKED"
+Module bpModule = null
+bool bpOwned = false
+noError()
+if (getDatabaseIdentifier() == di_arg_database && doorsname() == di_arg_user && doorsVersion() == di_arg_clientVersion &&
+    (di_arg_type == "Major" || di_arg_type == "Minor") && getInvalidCharInSuffix(di_arg_suffix) == '\0') {
+    Item bpItem = item(di_arg_path)
+    if (!null bpItem && type(bpItem) == "Formal" && !isDeleted(bpItem) && canRead(bpItem) &&
+        fullName(bpItem) == di_arg_path && qualifiedUniqueID(bpItem) == di_arg_moduleId) {
+        ModName_ bpRef = module(di_arg_path)
+        if (!null bpRef) {
+            bpModule = data(moduleVersion(bpRef))
+            if (null bpModule) { bpModule = load(moduleVersion(bpRef), false); bpOwned = !null bpModule }
+            if (!null bpModule && isRead(bpModule) && !isBaseline(bpModule) && !unsaved(bpModule)) {
+                current = bpModule
+                Baseline bpLast = getMostRecentBaseline(bpModule, true)
+                string bpCurrent = ""
+                if (!null bpLast) bpCurrent = versionString(moduleVersion(bpRef, bpLast))
+                Baseline bpNext = null
+                if (di_arg_type == "Major") bpNext = nextMajor(di_arg_suffix)
+                else bpNext = nextMinor(di_arg_suffix)
+                string bpNextVersion = versionString(moduleVersion(bpRef, bpNext))
+                if (!null bpNext && bpCurrent == di_arg_currentVersion && bpNextVersion == di_arg_expectedVersion) bpStatus = "RESOLUTION_VERIFIED"
+            }
+        }
+    }
+}
+string bpError = lastError()
+if (!null bpError) bpStatus = "BLOCKED"
+if (bpOwned && !null bpModule) {
+    noError()
+    bool bpClean = isRead(bpModule) && !unsaved(bpModule)
+    string bpStateError = lastError()
+    noError()
+    if (bpClean && null bpStateError) {
+        bool bpClosed = close(bpModule, false)
+        if (!bpClosed) bpStatus = "BLOCKED"
+    } else bpStatus = "BLOCKED"
+    string bpCloseError = lastError()
+    if (!null bpCloseError) bpStatus = "BLOCKED"
+}
+oleSetResult("DOORS_BASELINE_PROBE\t1\t" di_requestId "\t" bpStatus "\n")

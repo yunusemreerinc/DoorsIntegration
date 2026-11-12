@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
+    <ProjectReference Include="..\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Dxl\DoorsIntegration.Dxl.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Processing\DoorsIntegration.Processing.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Export\DoorsIntegration.Export.csproj" />
+  </ItemGroup>
+</Project>

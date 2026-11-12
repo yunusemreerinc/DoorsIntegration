@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
+    <Content Include="..\..\scripts\dxl\*.dxl" Link="scripts\dxl\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\scripts\Read-DiscoveryDebug.ps1" Link="scripts\Read-DiscoveryDebug.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Processing\DoorsIntegration.Processing.csproj" />
+  </ItemGroup>
+</Project>

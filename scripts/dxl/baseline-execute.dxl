@@ -1,0 +1,182 @@
+// ONE module, ONE approved attempt. No save, discard, unlock, retry or rollback.
+// IBM DXL Reference: create(Module,Baseline,string) CLOSES the module.
+// nextMajor/nextMinor have an optional suffix, NOT a Module argument.
+// Deployment requires release-specific manual review and a recorded runtime probe.
+// In particular, symbolic next-handle -> ModuleVersion -> versionString resolution
+// MUST be validated on the deployed client. Failure to resolve blocks creation.
+string beEscape(string value) {
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(value); i++) {
+        char c = value[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string s = stringOf(b)
+    delete(b)
+    return s
+}
+string beOutcome = "Blocked", beReason = "ApprovalRequired", beCleanup = "NotOpened"
+string beDb = "", beUser = "", beId = ""
+bool beAttempted = false
+Module beModule = null
+ModName_ beRef = null
+noError()
+beDb = getDatabaseIdentifier()
+beUser = doorsname()
+bool beReady = length(di_arg_approval) == 32 && di_arg_mode == "commit"
+if (beReady) {
+    beReady = beDb != "" && beUser != "" && beDb == di_arg_database && beUser == di_arg_user &&
+        doorsVersion() == di_arg_clientVersion && intOf(session()) == intOf(di_arg_session) &&
+        intOf(today()) > 0 && intOf(today()) < intOf(di_arg_expires)
+    beReason = "SessionChanged"
+}
+if (beReady) {
+    beReason = "InvalidInput"
+    beReady = (di_arg_type == "Major" || di_arg_type == "Minor") &&
+        getInvalidCharInSuffix(di_arg_suffix) == '\0' && isValidDescription(di_arg_annotation)
+}
+if (beReady) {
+    beReason = "IdentityOrAccessChanged"
+    Item beItem = item(di_arg_path)
+    beReady = !null beItem
+    if (beReady) beReady = type(beItem) == "Formal" && !isDeleted(beItem) && canRead(beItem) &&
+        canCreate(beItem) && canModify(beItem) && fullName(beItem) == di_arg_path
+    if (beReady) {
+        beId = qualifiedUniqueID(beItem)
+        beReady = beId != "" && beId == di_arg_moduleId
+        beRef = module(di_arg_path)
+        if (null beRef) beReady = false
+    }
+}
+if (beReady) {
+    // Never adopt/reopen/close ANY current-session module, even a clean read-only one.
+    beReason = "AlreadyOpenOrLocked"
+    beReady = null data(moduleVersion(beRef)) && !isLocked(beRef)
+}
+string beInitialError = lastError()
+if (!null beInitialError) { beReady = false; beReason = "NativePrecheckError" }
+if (beReady) {
+    noError()
+    beModule = edit(di_arg_path, false, true, true) // exclusive, hidden, silent lock failure, standard view
+    string beOpenError = lastError()
+    beReady = null beOpenError && !null beModule
+    beReason = "ExclusiveOpenFailed"
+    if (!null beModule) beCleanup = "NeedsInspection"
+    if (beReady) {
+        noError()
+        beReason = "ExclusiveStateOrAccessChanged"
+        beReady = isEdit(beModule) && !isShare(beModule) && !isBaseline(beModule) &&
+            canRead(beModule) && canCreate(beModule) && canModify(beModule) &&
+            fullName(beModule) == di_arg_path && qualifiedUniqueID(beModule) == di_arg_moduleId
+        if (unsaved(beModule)) { beReady = false; beReason = "UnsavedChanges" }
+        if (beReady) {
+            beReason = "NumberingChanged"
+            Baseline beLast = getMostRecentBaseline(beModule, true) // includes deleted watermark
+            string beLastVersion = ""
+            if (!null beLast) beLastVersion = versionString(moduleVersion(beRef, beLast))
+            beReady = beLastVersion == di_arg_currentVersion
+        }
+        if (beReady) {
+            // Explicit context, with no borrowed current Module/Object retained.
+            current = beModule
+            Baseline beNext = null
+            if (di_arg_type == "Major") beNext = nextMajor(di_arg_suffix)
+            else beNext = nextMinor(di_arg_suffix)
+            beReason = "ExpectedVersionUnresolvedOrChanged"
+            string beNextVersion = versionString(moduleVersion(beRef, beNext))
+            beReady = !null beNext && beNextVersion == di_arg_expectedVersion
+            if (beReady) {
+                beReason = "TargetExists"
+                beReady = !baselineExists(beModule, baseline(intOf(di_arg_major), intOf(di_arg_minor), di_arg_suffix))
+            }
+            string beValidationError = lastError()
+            if (!null beValidationError) { beReady = false; beReason = "NativeValidationError" }
+            noError()
+            bool beFinalCheck = false
+            if (beReady) beFinalCheck = !unsaved(beModule) && isEdit(beModule) && !isShare(beModule) &&
+                canCreate(beModule) && canModify(beModule) && intOf(today()) > 0 && intOf(today()) < intOf(di_arg_expires) &&
+                getDatabaseIdentifier() == di_arg_database && doorsname() == di_arg_user && intOf(session()) == intOf(di_arg_session)
+            string beFinalError = lastError()
+            if (beReady && beFinalCheck && null beFinalError) {
+                beAttempted = true
+                beOutcome = "NeedsReconciliation"
+                beReason = "CreateOrVerificationUncertain"
+                beCleanup = "CreateClosesModule"
+                noError()
+                create(beModule, beNext, di_arg_annotation) // EXACTLY ONE native write attempt
+                // Even on error, the previous handle is unusable. Do not query/close/save it.
+                beModule = null
+                string beCreateError = lastError()
+                noError()
+                Item beFreshItem = item(di_arg_path)
+                bool beVerified = !null beFreshItem
+                if (beVerified) beVerified = type(beFreshItem) == "Formal" && !isDeleted(beFreshItem) &&
+                    fullName(beFreshItem) == di_arg_path && qualifiedUniqueID(beFreshItem) == di_arg_moduleId
+                if (beVerified) {
+                    ModName_ beFreshRef = module(di_arg_path)
+                    Module beFresh = null
+                    if (!null beFreshRef && null data(moduleVersion(beFreshRef))) beFresh = load(moduleVersion(beFreshRef), false)
+                    beVerified = false
+                    if (!null beFresh) {
+                        beCleanup = "NeedsInspection"
+                        if (isRead(beFresh) && !isBaseline(beFresh) && !unsaved(beFresh) &&
+                            qualifiedUniqueID(beFresh) == di_arg_moduleId &&
+                            baselineExists(beFresh, baseline(intOf(di_arg_major), intOf(di_arg_minor), di_arg_suffix))) {
+                            Baseline beFound
+                            for beFound in beFresh do {
+                                if (major(beFound) == intOf(di_arg_major) && minor(beFound) == intOf(di_arg_minor) &&
+                                    suffix(beFound) == di_arg_suffix && annotation(beFound) == di_arg_annotation && user(beFound) == di_arg_user) beVerified = true
+                            }
+                        }
+                        string beVerifyError = lastError()
+                        if (!null beVerifyError) beVerified = false
+                        noError()
+                        bool beFreshClean = isRead(beFresh) && !unsaved(beFresh)
+                        string beFreshStateError = lastError()
+                        noError()
+                        if (beFreshClean && null beFreshStateError) {
+                            bool beClosed = close(beFresh, false)
+                            if (beClosed) beCleanup = "Closed"
+                        }
+                        string beCloseError = lastError()
+                        if (!null beCloseError || beCleanup != "Closed") beVerified = false
+                    }
+                }
+                string bePostError = lastError()
+                if (null beCreateError && null bePostError && beVerified) {
+                    beOutcome = "Created"
+                    beReason = "Verified"
+                }
+            } else if (beReady) beReason = "FinalStateOrDeadlineChanged"
+        }
+        string beStateError = lastError()
+        if (!null beStateError && !beAttempted) beReason = "NativeValidationError"
+    }
+}
+// Only close the handle we opened, before create, and only when provably clean.
+if (!beAttempted && !null beModule) {
+    noError()
+    bool beOwnedClean = !unsaved(beModule)
+    string beOwnedStateError = lastError()
+    noError()
+    if (beOwnedClean && null beOwnedStateError) {
+        bool beClosedOwned = close(beModule, false)
+        if (beClosedOwned) beCleanup = "Closed"
+    }
+    string beCleanupError = lastError()
+    if (!null beCleanupError) beCleanup = "NeedsInspection"
+}
+int beWriteFlag = 0
+if (beAttempted) beWriteFlag = 1
+Buffer beOutput = create
+beOutput = "DOORS_BASELINE_EXECUTE\t1\t" di_requestId "\n"
+beOutput += "M\t" beEscape(di_arg_path) "\t" beEscape(beId) "\t" beEscape(beDb) "\t" beEscape(beUser) "\n"
+beOutput += "T\t" di_arg_major "\t" di_arg_minor "\t" beEscape(di_arg_suffix) "\t" beEscape(di_arg_annotation) "\n"
+beOutput += "R\t" beOutcome "\t" beWriteFlag "\t" beReason "\t" beCleanup "\nEND\n"
+oleSetResult(stringOf(beOutput))
+delete(beOutput)

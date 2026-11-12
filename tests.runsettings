@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <TargetFrameworkVersion>.NETFramework,Version=v4.8</TargetFrameworkVersion>
+    <TargetPlatform>x86</TargetPlatform>
+    <TreatNoTestsAsError>true</TreatNoTestsAsError>
+    <ResultsDirectory>artifacts\TestResults</ResultsDirectory>
+  </RunConfiguration>
+</RunSettings>

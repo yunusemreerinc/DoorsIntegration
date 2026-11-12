@@ -1,0 +1,27 @@
+<UserControl x:Class="DoorsIntegration.Wpf.Controls.BulkBaselinePreflightView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <TextBlock Text="BULK BASELINE / READ-ONLY PREFLIGHT" FontSize="17" Margin="4,3,0,8"/>
+            <TextBlock Text="Modülleri seçim sekmesinde seçin. Dry Run baseline oluşturmaz; kilit, edit modu veya kaydedilmemiş değişikliklere müdahale etmez." Style="{StaticResource MutedText}"/>
+            <WrapPanel><TextBlock Text="Tür"/><ComboBox Width="100" ItemsSource="{Binding BaselineTypes}" SelectedItem="{Binding BaselineType}"/>
+                <TextBlock Text="Suffix" Margin="12,0,3,0"/><TextBox Width="160" MaxLength="128" Text="{Binding BaselineSuffix, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Text="ExecutionPolicy" Margin="12,0,3,0"/><ComboBox Width="180" ItemsSource="{Binding ExecutionPolicies}" SelectedItem="{Binding ExecutionPolicy}"/>
+                <Button Content="Dry Run / Ön kontrol" Command="{Binding PlanCommand}"/><Button Content="Ön koşulları yeniden doğrula" Command="{Binding RevalidateCommand}"/>
+            </WrapPanel>
+            <DockPanel><TextBlock Text="Annotation" Width="80"/><TextBox Text="{Binding BaselineAnnotation, UpdateSourceTrigger=PropertyChanged}" MaxLength="16384" ToolTip="Job düzeyinde açıklama; hiçbir modüle yazılmaz."/></DockPanel>
+            <TextBlock Text="{Binding PreflightSummary}" TextWrapping="Wrap" Margin="4,7,4,3"/>
+            <TextBlock Text="{Binding PreflightPlanIdentity}" TextTrimming="CharacterEllipsis" ToolTip="{Binding PreflightPlanIdentity}" Style="{StaticResource MutedText}"/>
+        </StackPanel>
+        <TextBox DockPanel.Dock="Bottom" Height="150" Text="{Binding PreflightItemDetails, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="3,9,3,3"/>
+        <DataGrid x:Name="BulkBaselinePreflightGrid" ItemsSource="{Binding PreflightRows}" SelectedItem="{Binding SelectedPreflightItem}"><DataGrid.Columns>
+            <DataGridTextColumn Header="ModuleId" Binding="{Binding ModuleId}" Width="150"/>
+            <DataGridTextColumn Header="Full path" Binding="{Binding FullPath}" Width="1.4*"/>
+            <DataGridTextColumn Header="CurrentVersion" Binding="{Binding CurrentVersionLabel}" Width="110"/>
+            <DataGridTextColumn Header="ExpectedVersion" Binding="{Binding ExpectedVersionLabel}" Width="115"/>
+            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="80"/>
+            <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="1.3*"/>
+            <DataGridTextColumn Header="Önerilen çözüm" Binding="{Binding RecommendedResolution}" Width="1.5*"/>
+            <DataGridTextColumn Header="Warning" Binding="{Binding Warning}" Width="*"/>
+        </DataGrid.Columns></DataGrid>
+    </DockPanel>
+</UserControl>

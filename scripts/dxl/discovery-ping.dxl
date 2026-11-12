@@ -1,0 +1,2 @@
+// Independent, read-only COM Result round trip. No discovery APIs or database access.
+oleSetResult("DXL_PING_OK");

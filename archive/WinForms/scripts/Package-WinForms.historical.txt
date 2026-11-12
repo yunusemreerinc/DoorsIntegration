@@ -1,0 +1,38 @@
+param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Release',
+    [ValidateSet('x86', 'x64')]
+    [string]$Platform = 'x86',
+    [switch]$SkipBuild,
+    [string]$OutputDirectory
+)
+
+$ErrorActionPreference = 'Stop'
+$solutionRoot = Split-Path -Parent $PSScriptRoot
+if (-not $SkipBuild) {
+    & (Join-Path $PSScriptRoot 'Build.ps1') -Configuration $Configuration -Platform $Platform -SkipTests
+}
+$appDirectory = Join-Path $solutionRoot "src\DoorsIntegration.Desktop\bin\$Platform\$Configuration\net48"
+foreach ($requiredFile in 'DoorsIntegration.Desktop.exe', 'DoorsIntegration.Export.dll', 'DoorsIntegration.Processing.dll', 'DocumentFormat.OpenXml.dll', 'DocumentFormat.OpenXml.Framework.dll') {
+    if (-not (Test-Path -LiteralPath (Join-Path $appDirectory $requiredFile))) {
+        throw 'Build the desktop application and export dependencies before packaging.'
+    }
+}
+$artifactDirectory = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $solutionRoot ('artifacts\releases\' + (Get-Date -Format 'yyyy-MM-dd') + '-unified') }
+New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
+$archivePath = Join-Path $artifactDirectory "DoorsIntegration-WinForms-$Platform.zip"
+$packageFiles = @(Get-ChildItem -LiteralPath $appDirectory -File |
+    Where-Object { $_.Extension -in '.exe', '.dll', '.config' } | Select-Object -ExpandProperty FullName)
+foreach ($scriptName in 'discovery.dxl', 'requirements.dxl', 'links.dxl', 'module-create.dxl', 'requirement-write.dxl', 'link-write.dxl') {
+    if (-not (Test-Path -LiteralPath (Join-Path $appDirectory "scripts\dxl\$scriptName"))) {
+        throw "Build the desktop application to copy the external $scriptName script before packaging."
+    }
+}
+$packageFiles += Join-Path $solutionRoot 'README.md'
+$packageFiles += Join-Path $solutionRoot 'docs'
+foreach ($profileName in 'requirements-quality.example.xml', 'do178c-review.example.xml', 'do200b-review.example.xml', 'do330-review.example.xml') {
+    if (-not (Test-Path -LiteralPath (Join-Path $appDirectory "scripts\quality\$profileName"))) { throw "Build the Processing project to copy $profileName before packaging." }
+}
+$packageFiles += Join-Path $appDirectory 'scripts'
+Compress-Archive -LiteralPath $packageFiles -DestinationPath $archivePath -Force
+Write-Output $archivePath

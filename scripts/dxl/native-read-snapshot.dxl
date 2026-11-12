@@ -1,0 +1,137 @@
+// Read-only metadata observation. Never read(bsd), lock, edit, save or refresh a definition.
+// Iterators are visibility filtered; transport completion does NOT prove complete membership.
+string nrEscape(string value) {
+    if (null value) return ""
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(value); i++) {
+        char c = value[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+Buffer nrRows = create
+nrRows = "NATIVE_READ_SNAPSHOT\t1\t" di_requestId "\n"
+int nrCount = 0
+bool nrComplete = true
+void nrEmit(string row) {
+    if (!nrComplete) return
+    if (nrCount >= 10000 || length(row) > 65536 || length(nrRows) + length(row) > 2000000) { nrComplete = false; return }
+    nrRows += row "\n"
+    nrCount++
+}
+string nrCheck(bool value) { if (value) return "Passed"; return "Failed" }
+void nrModule(string path) {
+    string id = "", kind = "", exists = "Unknown", rd = "Unknown", cr = "Unknown", md = "Unknown"
+    string editState = "Unknown", locked = "Unknown", dirty = "Unknown", shareable = "Unknown"
+    Item mi = item(path)
+    if (!null mi) {
+        exists = "Passed"
+        id = qualifiedUniqueID(mi)
+        kind = type(mi)
+        rd = nrCheck(canRead(mi)); cr = nrCheck(canCreate(mi)); md = nrCheck(canModify(mi))
+        if (kind == "Formal" && canRead(mi)) {
+            ModName_ reference = module(path)
+            if (!null reference) {
+                // true is positive risk evidence; false alone is not proof of a safe configuration.
+                if (everSectioned(reference)) shareable = "Configured"
+                if (!isLocked(reference)) locked = "Unlocked"
+                ModuleVersion mv = moduleVersion(reference)
+                if (!null mv) {
+                    Module loaded = data(mv)
+                    if (null loaded) editState = "Closed"
+                    else {
+                        if (isRead(loaded)) editState = "ReadOnly"
+                        else if (isShare(loaded)) editState = "SharedCurrentSession"
+                        else if (isEdit(loaded)) { editState = "ExclusiveCurrentSession"; locked = "OwnedByCurrentSession" }
+                        if (unsaved(loaded)) dirty = "CurrentSession"
+                        else dirty = "None"
+                    }
+                    delete(mv)
+                }
+            }
+        }
+    }
+    nrEmit("P\t" nrEscape(path) "\t" nrEscape(id) "\t" kind "\t" exists "\t" rd "\t" cr "\t" md "\t" editState "\t" locked "\t" dirty "\t" shareable "\tNo open/save/lock attempted; other-session ownership and revisions unknown.")
+}
+void nrLink(string path) {
+    Item li = item(path)
+    if (!null li) {
+        if (type(li) == "Link" && canRead(li)) nrEmit("L\t" nrEscape(path) "\t" nrEscape(qualifiedUniqueID(li)) "\tLink\ttrue")
+    }
+}
+void nrPaths(string manifest, bool links) {
+    int start = 0, i
+    for (i = 0; i <= length(manifest); i++) {
+        if (!nrComplete) break
+        bool boundary = i == length(manifest)
+        if (!boundary) boundary = manifest[i] == '\n'
+        if (boundary) {
+            if (i > start) {
+                string path = manifest[start:i-1]
+                if (links) nrLink(path)
+                else nrModule(path)
+            }
+            start = i + 1
+        }
+    }
+}
+noError()
+nrEmit("C\t" nrEscape(getDatabaseIdentifier()) "\t" nrEscape(doorsname()) "\t" nrEscape(doorsVersion()) "\t" intOf(session()))
+if (di_arg_folder != "") {
+    Item fi = item(di_arg_folder)
+    if (!null fi) {
+        if (type(fi) == "Folder" || type(fi) == "Project") {
+            nrEmit("F\t" nrEscape(fullName(fi)) "\t" nrEscape(qualifiedUniqueID(fi)) "\t" type(fi) "\t" canRead(fi) "\t" canCreate(fi) "\t" canModify(fi))
+            if (canRead(fi)) {
+                Folder f = folder(di_arg_folder)
+                BaselineSetDefinition d
+                for d in f do {
+                    if (!nrComplete) break
+                    string dn = name(d)
+                    nrEmit("D\t" nrEscape(dn) "\t" nrEscape(description(d)))
+                    ModName_ mr
+                    for mr in d do {
+                        if (!nrComplete) break
+                        Item mi = item(fullName(mr))
+                        if (!null mi) {
+                            if (canRead(mi) && type(mi) == "Formal") nrEmit("M\t" nrEscape(dn) "\t" nrEscape(qualifiedUniqueID(mi)) "\t" nrEscape(fullName(mi)))
+                        }
+                    }
+                    BaselineSet bs
+                    for bs in d do {
+                        if (!nrComplete) break
+                        string prefix = nrEscape(dn) "\t" major(bs) "\t" minor(bs) "\t" nrEscape(suffix(bs))
+                        nrEmit("S\t" prefix "\t" isOpen(bs) "\t" nrEscape(annotation(bs)) "\t" nrEscape(user(bs)) "\t" intOf(dateOf(bs)))
+                        ModuleVersion mv
+                        for mv in bs do {
+                            if (!nrComplete) break
+                            Item bi = item(fullName(mv))
+                            if (!null bi) {
+                                if (canRead(bi) && type(bi) == "Formal" && baselineExists(mv)) {
+                                    Baseline b = baseline(mv)
+                                    if (!null b) nrEmit("B\t" prefix "\t" nrEscape(qualifiedUniqueID(bi)) "\t" nrEscape(fullName(bi)) "\t" major(b) "\t" minor(b) "\t" nrEscape(suffix(b)) "\t" nrEscape(versionString(mv)) "\tVerified")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+nrPaths(di_arg_modules, false)
+nrPaths(di_arg_links, true)
+string nrError = lastError()
+if (!null nrError) nrComplete = false
+Stream nrOutput = write(di_outputPath, 65001)
+if (null nrOutput) di_error = "NATIVE_READ_OUTPUT_FAILED"
+else { nrOutput << stringOf(nrRows) "END\t" nrComplete "\t" nrCount "\n"; close(nrOutput) }
+delete(nrRows)

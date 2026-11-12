@@ -1,0 +1,2 @@
+{"key":"external-req-001","action":"Create","target":"/TEST/Requirements","attributes":[{"name":"Object Heading","value":"Sample requirement"},{"name":"Object Text","value":"The component shall return the configured identifier."}]}
+{"key":"external-req-002","action":"Create","target":"/TEST/Requirements","attributes":[{"name":"Object Text","value":"Türkçe örnek gereksinim — test verisi."}]}

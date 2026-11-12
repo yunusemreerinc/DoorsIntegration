@@ -1,0 +1,163 @@
+// Read-only baseline history for declarations reviewed against IBM DOORS 9.7 DXL reference.
+// Target-version gating is managed code. No speculative nextMajor/nextMinor handle decoding.
+// Never edit/share/save/create/delete, acquire an edit lock or change ACLs.
+string bmEscape(string value) {
+    Buffer escaped = create
+    escaped = ""
+    int index
+    for (index = 0; index < length(value); index++) {
+        char c = value[index]
+        if (c == '\\') escaped += "\\\\"
+        else if (c == '\t') escaped += "\\t"
+        else if (c == '\r') escaped += "\\r"
+        else if (c == '\n') escaped += "\\n"
+        else escaped += c
+    }
+    string result = stringOf(escaped)
+    delete(escaped)
+    return result
+}
+Buffer bmRows = create
+bmRows = ""
+Module bmModule = null
+ModName_ bmRef = null
+bool bmOwned = false
+string bmId = ""
+string bmStatus = "DeniedOrNotFound"
+string bmOwnership = "NotLoaded"
+string bmCleanup = "NotOwned"
+int bmCount = 0
+bool bmCut = false
+string bmExisting = "L\tExisting\tUnknown\t0\t0\t\tUnknown\n"
+string bmNumbering = "L\tNumbering\tUnknown\t0\t0\t\tUnknown\n"
+string bmCollision = "Unknown"
+if (di_arg_collision != "1") bmCollision = "NotRequested"
+noError()
+Item bmItem = item(di_arg_path)
+if (!null bmItem) {
+    if (type(bmItem) != "Formal") bmStatus = "NotFormalModule"
+    else if (isDeleted(bmItem)) bmStatus = "ModuleDeleted"
+    else if (!canRead(bmItem)) bmStatus = "AccessDenied"
+    else {
+        bmId = qualifiedUniqueID(bmItem)
+        if (bmId == "" || bmId != di_arg_moduleId || fullName(bmItem) != di_arg_path) bmStatus = "IdentityMismatch"
+        else {
+            bmRef = module(di_arg_path)
+            if (!null bmRef) {
+                ModuleVersion bmVersion = moduleVersion(bmRef)
+                if (!null bmVersion) {
+                    bmModule = data(bmVersion)
+                    if (!null bmModule) {
+                        if (!isRead(bmModule) || isBaseline(bmModule)) bmStatus = "AlreadyOpenForWrite"
+                        else { bmOwnership = "BorrowedReadOnly"; bmStatus = "Available" }
+                    } else if (di_arg_open != "1") bmStatus = "ClosedByPolicy"
+                    else {
+                        bmModule = load(bmVersion, false)
+                        if (!null bmModule) { bmOwned = true; bmOwnership = "OwnedReadOnly"; bmStatus = "Available" }
+                        else bmStatus = "ReadFailed"
+                    }
+                    if (bmStatus == "Available" && (!isRead(bmModule) || isBaseline(bmModule) ||
+                        !canRead(bmModule) || fullName(bmModule) != di_arg_path || qualifiedUniqueID(bmModule) != di_arg_moduleId)) bmStatus = "ReadFailed"
+                }
+            }
+        }
+    }
+}
+string bmLookupError = lastError()
+if (!null bmLookupError) bmStatus = "ReadFailed"
+if (bmStatus == "Available") {
+    noError()
+    if (di_arg_onlyCollision != "1") {
+        Baseline bmB
+        for bmB in bmModule do {
+            if (bmCount >= intOf(di_arg_maxBaselines)) { bmCut = true; break }
+            int bmMajor = major(bmB)
+            int bmMinor = minor(bmB)
+            string bmSuffix = suffix(bmB)
+            if (null bmSuffix) bmSuffix = ""
+            string bmAnnotation = annotation(bmB)
+            if (null bmAnnotation) bmAnnotation = ""
+            string bmCreator = user(bmB)
+            if (null bmCreator) bmCreator = ""
+            Date bmDate = dateOf(bmB)
+            int bmEpoch = intOf(bmDate)
+            string bmDateRaw = stringOf(bmDate)
+            int bmExists = 0
+            if (baselineExists(bmModule, bmB)) bmExists = 1
+            // Optional native index from an ALREADY loaded read-only baseline; do not load/close it.
+            string bmNativeIndex = ""
+            Module bmLoadedBaseline = data(moduleVersion(bmRef, bmB))
+            if (!null bmLoadedBaseline && isRead(bmLoadedBaseline) && isBaseline(bmLoadedBaseline) &&
+                qualifiedUniqueID(bmLoadedBaseline) == di_arg_moduleId) {
+                bmNativeIndex = baselineIndex(bmLoadedBaseline)
+                if (null bmNativeIndex) bmNativeIndex = ""
+            }
+            string bmRow = "B\t" bmMajor "\t" bmMinor "\t" bmEscape(bmSuffix) "\t" bmEscape(bmAnnotation) "\t" bmEscape(bmCreator) "\t" bmEpoch "\t" bmEscape(bmDateRaw) "\t" bmExists "\t" bmEscape(bmNativeIndex) "\n"
+            if (length(bmAnnotation) > 16384 || length(bmCreator) > 4096 || length(bmDateRaw) > 4096 ||
+                length(bmRows) + length(bmRow) > intOf(di_arg_maxChars)) { bmCut = true; break }
+            bmRows += bmRow
+            bmCount++
+        }
+        Baseline bmLastExisting = getMostRecentBaseline(bmModule, false)
+        if (null bmLastExisting) bmExisting = "L\tExisting\tNone\t0\t0\t\tUnknown\n"
+        else if (baselineExists(bmModule, bmLastExisting)) {
+            string bmESuffix = suffix(bmLastExisting)
+            if (null bmESuffix) bmESuffix = ""
+            bmExisting = "L\tExisting\tAvailable\t" (major bmLastExisting) "\t" (minor bmLastExisting) "\t" bmEscape(bmESuffix) "\tExists\n"
+        }
+        Baseline bmLastVersion = getMostRecentBaseline(bmModule, true)
+        if (null bmLastVersion) bmNumbering = "L\tNumbering\tNone\t0\t0\t\tUnknown\n"
+        else {
+            string bmNSuffix = suffix(bmLastVersion)
+            if (null bmNSuffix) bmNSuffix = ""
+            string bmNExists = "AbsentOrUnreadable"
+            if (baselineExists(bmModule, bmLastVersion)) bmNExists = "Exists"
+            bmNumbering = "L\tNumbering\tAvailable\t" (major bmLastVersion) "\t" (minor bmLastVersion) "\t" bmEscape(bmNSuffix) "\t" bmNExists "\n"
+        }
+    }
+    if (di_arg_collision == "1") {
+        string bmTargetSuffix = null
+        if (di_arg_targetSuffix != "") bmTargetSuffix = di_arg_targetSuffix
+        Baseline bmTarget = baseline(intOf(di_arg_targetMajor), intOf(di_arg_targetMinor), bmTargetSuffix)
+        if (baselineExists(bmModule, bmTarget)) bmCollision = "Exists"
+        else bmCollision = "AbsentOrUnreadable"
+    }
+    string bmReadError = lastError()
+    if (!null bmReadError) bmStatus = "ReadFailed"
+}
+if (bmOwned && !null bmModule) {
+    noError()
+    bool bmClosed = close(bmModule)
+    string bmCloseError = lastError()
+    if (!bmClosed || !null bmCloseError) bmCleanup = "Failed"
+    else bmCleanup = "Closed"
+}
+if (bmStatus != "Available" || bmCleanup == "Failed") {
+    if (bmCleanup == "Failed") bmStatus = "ReadFailed"
+    bmRows = ""
+    bmCount = 0
+    bmCut = true
+    bmExisting = "L\tExisting\tUnknown\t0\t0\t\tUnknown\n"
+    bmNumbering = "L\tNumbering\tUnknown\t0\t0\t\tUnknown\n"
+    if (di_arg_collision == "1") bmCollision = "Unknown"
+}
+noError()
+Stream bmOutput = write(di_outputPath, 65001)
+string bmOpenError = lastError()
+if (null bmOutput || !null bmOpenError) di_error = "BASELINE_METADATA_OUTPUT_FAILED"
+else {
+    noError()
+    bmOutput << "DOORS_BASELINE_METADATA\t1\t" di_requestId "\n"
+    bmOutput << "M\t" bmEscape(di_arg_path) "\t" bmEscape(bmId) "\t" bmStatus "\t" bmOwnership "\n"
+    bmOutput << stringOf(bmRows) << bmExisting << bmNumbering
+    bmOutput << "C\t" di_arg_targetMajor "\t" di_arg_targetMinor "\t" bmEscape(di_arg_targetSuffix) "\t" bmCollision "\n"
+    int bmTruncated = 0
+    if (bmCut || di_arg_onlyCollision == "1") bmTruncated = 1
+    bmOutput << "END\t" bmCount "\t" bmTruncated "\t" bmCleanup "\n"
+    string bmWriteError = lastError()
+    noError()
+    close(bmOutput)
+    string bmOutputCloseError = lastError()
+    if (!null bmWriteError || !null bmOutputCloseError) di_error = "BASELINE_METADATA_OUTPUT_FAILED"
+}
+delete(bmRows)

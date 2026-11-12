@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Example metadata review only. Numeric/freshness limits are intentionally unconfigured.
+     Supply your approved DQR thresholds/units and actual attribute mappings; do not infer limits from this template. -->
+<qualityProfile id="example-do200b-data-review-aids" revision="1" exampleOnly="true">
+  <rule id="ORG-200-DQR-EVIDENCE" revision="1" severity="Warning" kind="RequiredAll" standardContext="DO-200B" projectReference="EXAMPLE-APPROVED-DQR">
+    <field>DQR Reference</field><field>Data Source</field><field>Integrity Evidence</field><field>Completeness Evidence</field>
+  </rule>
+  <rule id="ORG-200-ACCURACY" revision="1" severity="Warning" kind="NumericRange" standardContext="DO-200B" projectReference="EXAMPLE-APPROVED-DQR">
+    <field>Accuracy</field>
+  </rule>
+  <rule id="ORG-200-RESOLUTION" revision="1" severity="Warning" kind="NumericRange" standardContext="DO-200B" projectReference="EXAMPLE-APPROVED-DQR">
+    <field>Resolution</field>
+  </rule>
+  <rule id="ORG-200-TIMELINESS" revision="1" severity="Warning" kind="Freshness" standardContext="DO-200B" projectReference="EXAMPLE-APPROVED-DQR">
+    <field>Effective UTC</field>
+  </rule>
+</qualityProfile>

@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><Reference Include="System.Runtime.Serialization" /><Reference Include="System.Security" /></ItemGroup>
+</Project>

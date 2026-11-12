@@ -1,0 +1,82 @@
+﻿[
+    {
+        "Original":  "tests/DoorsIntegration.Tests/DesktopTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/DesktopTests.cs",
+        "Sha256":  "B2DB6DA7B3F9C5FDAC932B10FD68972FC7366852F1EE8861EDA313AB4DB90328"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/DesktopWorkspaceTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/DesktopWorkspaceTests.cs",
+        "Sha256":  "C39DD4895F9A7B6E41BFDBE5F6E5DADEDDF73AB8A9650FBEC4E93F6F74A24DEA"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/DesktopWorkspaceTestDoubles.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/DesktopWorkspaceTestDoubles.cs",
+        "Sha256":  "6EC3A8B28E1EB10E9CCC849DA00954A28D3AEC7E5C33345EE37EDA81CE5F08E5"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/DiscoveryDesktopTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/DiscoveryDesktopTests.cs",
+        "Sha256":  "4616BF291F79E14C34843498FAA6F909E261A78723EFC3055DE88E96C44B040A"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/LinkWriteDesktopTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/LinkWriteDesktopTests.cs",
+        "Sha256":  "B507B6B7F46B4BCC79ECBCEDF897AE4DC65E972B1079DE29FD91BCFFE5D4736C"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/ProcessingDesktopTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/ProcessingDesktopTests.cs",
+        "Sha256":  "08CC416CEE1AE5221F77A855AFEA9824D5E4BAA8A1E674B626B00D0C4BA3B341"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/DiagnosticCommandTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/DiagnosticCommandTests.cs",
+        "Sha256":  "15CF4E69BC80139AC9D0A7A9C5A9FE7FE10A230D2F2B8625C13E28C0D59C8415"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/ExecutionTimeoutTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/ExecutionTimeoutTests.cs",
+        "Sha256":  "8B92A24B93A114F3C214752410E8BA53DCD45917B4E7E9580E8259C05A08EE00"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/DxlRunLimitAutomationTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/DxlRunLimitAutomationTests.cs",
+        "Sha256":  "BFDE00EC145815E012B1692020168D3383CCF4526CF2BA8A47FC7DCE5A1753E4"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/WatchdogSettingsTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/WatchdogSettingsTests.cs",
+        "Sha256":  "9BAC691E110BE47F867B23366DC6C6206D9D001B60AB53210096D469EE4B0C72"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/BulkBaselineTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/BulkBaselineTests.cs",
+        "Sha256":  "3FC25F07E2F9D45B3787A05BB2AC4172562E7D11658F475EDB375FDDB94A0E89"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/BulkBaselineReportingTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/BulkBaselineReportingTests.cs",
+        "Sha256":  "0E928AB69326F63AC7DE8170E25535B5F49CEADC4256B9DF1B1179A2268447DD"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/LinkWriteTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/LinkWriteTests.cs",
+        "Sha256":  "6D221BBAD9E8DF9C269ECA2CD90C5D8F79B3140987FF868DD58D300BE9C5D0BA"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/ProcessingDoorsAdapterTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/ProcessingDoorsAdapterTests.cs",
+        "Sha256":  "FCBD947AC898E15F3C086AC84F718C20CD9D5F94A5DEB4E6338300DB35E50027"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/RequirementWriteTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/RequirementWriteTests.cs",
+        "Sha256":  "660A2BC005D424E9690B2375EBC6BA0A66875CEE99912CDF54934C1852A6C2F3"
+    },
+    {
+        "Original":  "tests/DoorsIntegration.Tests/TraceabilityGraphTests.cs",
+        "Archive":  "archive/WinForms/tests/DoorsIntegration.Legacy.Tests/Snapshots/TraceabilityGraphTests.cs",
+        "Sha256":  "CCBAEC30F3AE8949768ECC15D04F48D0DE14B3F10D551225DCF79A60E3ACDD5F"
+    }
+]

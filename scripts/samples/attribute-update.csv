@@ -1,0 +1,2 @@
+key,action,target,objectId,attr:Priority,attr:Object Text
+update-req-001,Update,/TEST/Requirements,17,High,"Replace the complete Object Text value only after reviewing the native preview."

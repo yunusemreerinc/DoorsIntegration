@@ -1,0 +1,576 @@
+// Classic DOORS only. schema/preview never open for edit and never call create/move/save.
+// Commit owns a previously closed module in exclusive edit mode. No unlock, delete, retry or rollback.
+// All request data is escaped by DxlExecutor; packed fields are decoded as data, never evaluated.
+
+Module rwModule = null, rwPreviousModule = current Module
+ModuleVersion rwVersion = null
+Object rwObject = null, rwAnchor = null
+bool rwOwned = false, rwReady = true, rwInputOk = true, rwWriteAttempted = false
+string rwDatabase = "", rwUser = "", rwModuleId = "", rwQualifiedId = ""
+string rwOutcome = "Preview", rwPersistence = "NotAttempted", rwCleanup = "NotLoaded"
+string rwIdentifier = ""
+int rwAbsolute = 0, rwParent = 0, rwLevel = 0
+int rwRequestedAbsolute = intOf(di_arg_absolute), rwRequestedAnchor = intOf(di_arg_anchor)
+int rwCount = 0, rwRequiredCount = 0, rwStepCount = 0, rwDescCount = 0
+string rwNames[32], rwValues[32], rwFormats[32], rwExpected[32], rwRequired[32]
+string rwStepKinds[36], rwStepNames[36], rwStepStatuses[36], rwStepErrors[36]
+int rwDescIds[2048], rwDescParents[2048], rwDescLevels[2048]
+int rwOriginalLevel = 0, rwOriginalParent = 0
+Buffer rwSchema = create, rwIssues = create, rwState = create, rwBefore = create
+rwSchema = ""
+rwIssues = ""
+rwState = ""
+rwBefore = ""
+
+string rwEscape(string value) {
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(value); i++) {
+        char c = value[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+string rwBit(bool value) { if (value) return "1"; return "0" }
+void rwIssue(string severity, string code, string attributeName) {
+    if (severity == "Error") rwReady = false
+    if (length(rwIssues) < 16384) rwIssues += "I\t" severity "\t" code "\t" rwEscape(attributeName) "\n"
+}
+void rwStateField(string value) {
+    if (length(value) > 32768 || length(rwState) + length(value) + 16 > 32768) {
+        rwIssue("Error", "StateTooLarge", "")
+        return
+    }
+    rwState += (length(value) "") ":" value
+}
+string rwToken(string text, int &offset, char delimiter) {
+    Buffer b = create
+    b = ""
+    bool ended = false
+    while (offset < length(text)) {
+        char c = text[offset]
+        offset++
+        if (c == delimiter) { ended = true; break }
+        if (c == '\\') {
+            if (offset >= length(text)) { rwInputOk = false; break }
+            c = text[offset]
+            offset++
+            if (c == 't') c = '\t'
+            else if (c == 'n') c = '\n'
+            else if (c == 'r') c = '\r'
+            else if (c != '\\') { rwInputOk = false; break }
+        }
+        b += c
+    }
+    if (!ended) rwInputOk = false
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+string rwRawLine(string text, int &offset) {
+    Buffer b = create
+    b = ""
+    while (offset < length(text)) {
+        char c = text[offset]
+        offset++
+        if (c == '\n') break
+        b += c
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+bool rwHasText(string value) {
+    int i
+    for (i = 0; i < length(value); i++) {
+        char c = value[i]
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') return true
+    }
+    return false
+}
+int rwAbs(Object o) { if (null o) return 0; return o."Absolute Number" }
+int rwParentId(Object o) { if (null o) return 0; Object p = parent(o); return rwAbs(p) }
+bool rwOrdinary(Object o) {
+    if (null o) return false
+    if (!canRead(o) || isDeleted(o)) return false
+    return !table(o) && !row(o) && !cell(o)
+}
+bool rwWithin(Object o, Object ancestor) {
+    if (null o || null ancestor) return false
+    int depth = 0
+    Object p = o
+    while (!null p) {
+        if (p == ancestor) return true
+        depth++
+        if (depth > 1024) { rwIssue("Error", "InvalidHierarchy", ""); return false }
+        p = parent(p)
+    }
+    return false
+}
+Object rwFind(int absolute) {
+    if (absolute <= 0) return null
+    Object o
+    int scanned = 0
+    for o in entire(rwModule) do {
+        scanned++
+        if (scanned > 100000) { rwIssue("Error", "StateTooLarge", ""); return null }
+        if (canRead(o) && rwAbs(o) == absolute) return o
+    }
+    return null
+}
+void rwAddStep(string kind, string attributeName) {
+    if (rwStepCount >= 36) { rwInputOk = false; return }
+    rwStepKinds[rwStepCount] = kind
+    rwStepNames[rwStepCount] = attributeName
+    rwStepStatuses[rwStepCount] = "Skipped"
+    rwStepErrors[rwStepCount] = ""
+    rwStepCount++
+}
+void rwApplied(int step) { rwStepStatuses[step] = "Applied" }
+void rwFailed(int step, string code) {
+    rwStepStatuses[step] = "Failed"
+    rwStepErrors[step] = code
+    rwIssue("Error", code, rwStepNames[step])
+    rwOutcome = "PartialFailure"
+}
+void rwIdentity() {
+    if (!null rwObject && canRead(rwObject)) {
+        rwAbsolute = rwAbs(rwObject)
+        rwIdentifier = identifier(rwObject)
+        rwParent = rwParentId(rwObject)
+        rwLevel = level(rwObject)
+    }
+}
+bool rwEnumValid(AttrDef definition, AttrType attributeType, string value) {
+    if (attributeType.type != attrEnumeration) return true
+    if (value == "") return attributeValue(definition, value)
+    int offset = 0, selections = 0
+    string selected[512]
+    string choices = value "\n"
+    while (offset < length(choices)) {
+        string choice = rwRawLine(choices, offset)
+        bool found = false
+        int e
+        for (e = 0; e < attributeType.size; e++) if (attributeType.strings[e] == choice) found = true
+        if (!found) return false
+        if (selections >= 512) return false
+        int previous
+        for (previous = 0; previous < selections; previous++) if (selected[previous] == choice) return false
+        selected[selections] = choice
+        selections++
+        if (!definition.multi && selections > 1) return false
+    }
+    return true
+}
+string rwNormalizeLines(string value) {
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(value); i++) {
+        if (value[i] == '\r' && i + 1 < length(value) && value[i + 1] == '\n') continue
+        b += value[i]
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+bool rwValueMatches(Object o, int index) {
+    string attributeName = rwNames[index]
+    if (!canRead(o.(attributeName))) return false
+    string actual = unicodeString(o.(attributeName)), expected = rwExpected[index]
+    AttrDef definition = find(rwModule, attributeName)
+    if (null definition) return false
+    AttrType attributeType = definition.type
+    if (null attributeType) return false
+    if (!isAttributeValueInRange(definition, o.(attributeName))) return false
+    if (attributeType.type == attrEnumeration && definition.multi) {
+        if (!rwEnumValid(definition, attributeType, actual) || !rwEnumValid(definition, attributeType, expected)) return false
+        int e
+        for (e = 0; e < attributeType.size; e++) {
+            string label = attributeType.strings[e]
+            int offset = 0
+            bool inActual = false, inExpected = false
+            string actualLines = actual "\n", expectedLines = expected "\n"
+            while (offset < length(actualLines)) if (rwRawLine(actualLines, offset) == label) inActual = true
+            offset = 0
+            while (offset < length(expectedLines)) if (rwRawLine(expectedLines, offset) == label) inExpected = true
+            if (inActual != inExpected) return false
+        }
+        return true
+    }
+    return rwNormalizeLines(actual) == rwNormalizeLines(expected)
+}
+void rwCatalog() {
+    AttrDef definition
+    int definitions = 0, totalEnums = 0
+    for definition in rwModule do {
+        definitions++
+        if (definitions > 256 || length(rwSchema) > 524288) { rwIssue("Error", "StateTooLarge", ""); break }
+        string attributeName = definition.name
+        AttrType attributeType = definition.type
+        if (null attributeType) { rwIssue("Error", "UnsupportedAttribute", attributeName); continue }
+        string baseType = stringOf(attributeType.type)
+        rwSchema += "A\t" rwEscape(attributeName) "\t" rwEscape(definition.typeName) "\t" rwEscape(baseType) "\t" //-
+            rwBit(definition.object) "\t" rwBit(definition.dxl) "\t" rwBit(definition.system) "\t" //-
+            rwBit(definition.multi) "\t" rwBit(canRead(rwModule, attributeName)) "\t" rwBit(canWrite(rwModule, attributeName)) "\n"
+        if (attributeType.type == attrEnumeration) {
+            if (attributeType.size > 512) { rwIssue("Error", "StateTooLarge", attributeName); continue }
+            int e
+            for (e = 0; e < attributeType.size; e++) {
+                totalEnums++
+                if (totalEnums > 8192) { rwIssue("Error", "StateTooLarge", attributeName); break }
+                rwSchema += "E\t" rwEscape(attributeName) "\t" rwEscape(attributeType.strings[e]) "\n"
+            }
+        }
+    }
+}
+void rwInspect() {
+    rwObject = rwFind(rwRequestedAbsolute)
+    rwAnchor = rwFind(rwRequestedAnchor)
+    if (rwRequestedAbsolute > 0 && !rwOrdinary(rwObject)) rwIssue("Error", "TargetUnavailable", "")
+    if (rwRequestedAnchor > 0 && !rwOrdinary(rwAnchor)) rwIssue("Error", "TargetUnavailable", "")
+    if (rwRequestedAbsolute == 0 && di_arg_position == "Keep") rwIssue("Error", "InvalidHierarchy", "")
+    if (rwRequestedAbsolute > 0 && di_arg_position == "FirstInModule") rwIssue("Error", "InvalidHierarchy", "")
+    if (!null rwObject && !null rwAnchor && rwWithin(rwAnchor, rwObject)) rwIssue("Error", "InvalidHierarchy", "")
+    rwIdentity()
+    rwOriginalLevel = rwLevel
+    rwOriginalParent = rwParent
+    rwStateField(rwDatabase); rwStateField(rwUser); rwStateField(rwModuleId); rwStateField(rwQualifiedId)
+    rwStateField(di_arg_absolute); rwStateField(di_arg_position); rwStateField(di_arg_anchor)
+    Object o
+    int scanned = 0
+    bool firstTop = true
+    for o in entire(rwModule) do {
+        scanned++
+        if (scanned > 100000) { rwIssue("Error", "StateTooLarge", ""); break }
+        if (!canRead(o)) {
+            if (di_arg_position == "Keep") continue
+            rwIssue("Error", "PermissionDenied", ""); break
+        }
+        bool relevant = o == rwObject || o == rwAnchor
+        if (!null rwObject && rwWithin(rwObject, o)) relevant = true
+        if (!null rwAnchor && (rwWithin(rwAnchor, o) || rwWithin(o, rwAnchor))) relevant = true
+        bool descendant = !null rwObject && o != rwObject && di_arg_position != "Keep" && rwWithin(o, rwObject)
+        if (descendant) relevant = true
+        if (rwRequestedAbsolute == 0 && di_arg_position == "FirstInModule" && firstTop && !isDeleted(o) && rwParentId(o) == 0) {
+            relevant = true; firstTop = false
+        }
+        if (relevant) {
+            rwStateField(rwAbs(o) ""); rwStateField(rwParentId(o) ""); rwStateField(level(o) ""); rwStateField(rwBit(isDeleted(o)))
+        }
+        if (descendant) {
+            if (!rwOrdinary(o) || rwDescCount >= 2048) { rwIssue("Error", "InvalidHierarchy", ""); break }
+            rwDescIds[rwDescCount] = rwAbs(o); rwDescParents[rwDescCount] = rwParentId(o); rwDescLevels[rwDescCount] = level(o)
+            rwDescCount++
+            if (di_arg_mode == "commit" && !canModify(o)) rwIssue("Error", "PermissionDenied", "")
+        }
+    }
+    int i
+    for (i = 0; i < rwCount; i++) {
+        string attributeName = rwNames[i]
+        AttrDef definition = find(rwModule, attributeName)
+        if (null definition) { rwIssue("Error", "AttributeMissing", attributeName); continue }
+        AttrType attributeType = definition.type
+        if (!definition.object || definition.dxl || (definition.system && attributeName != "Object Heading" && attributeName != "Object Text") || null attributeType) {
+            rwIssue("Error", "UnsupportedAttribute", attributeName); continue
+        }
+        rwStateField(attributeName); rwStateField(definition.typeName); rwStateField(stringOf(attributeType.type)); rwStateField(rwBit(definition.multi))
+        if (attributeType.type == attrEnumeration) {
+            rwExpected[i] = rwNormalizeLines(rwExpected[i])
+            if (rwFormats[i] == "PlainText") rwValues[i] = rwExpected[i]
+            if (attributeType.size > 512) { rwIssue("Error", "StateTooLarge", attributeName); continue }
+            int e
+            for (e = 0; e < attributeType.size; e++) { rwStateField(attributeType.strings[e]); rwStateField(attributeType.values[e] "") }
+        }
+        if (rwFormats[i] == "DoorsRichText" && attributeType.type != attrString && attributeType.type != attrText) rwIssue("Error", "InvalidValue", attributeName)
+        if (!attributeValue(definition, rwExpected[i]) || !rwEnumValid(definition, attributeType, rwExpected[i])) rwIssue("Error", "InvalidValue", attributeName)
+        if (di_arg_mode == "commit" && !canWrite(rwModule, attributeName)) rwIssue("Error", "AttributeNotWritable", attributeName)
+        if (!null rwObject && rwOrdinary(rwObject)) {
+            if (!canRead(rwObject.(attributeName))) rwIssue("Error", "PermissionDenied", attributeName)
+            else {
+                string previousPlain = unicodeString(rwObject.(attributeName))
+                string previousValue = previousPlain, previousRich = ""
+                if (attributeType.type == attrText || attributeType.type == attrString) previousValue = richTextWithOle(rwObject.(attributeName))
+                if (attributeType.type == attrText || attributeType.type == attrString) previousRich = previousValue
+                rwStateField(previousValue)
+                if (length(previousPlain) <= 32768 && length(previousRich) <= 32768) rwBefore += "B\t" rwEscape(attributeName) "\t" rwEscape(previousPlain) "\t" rwEscape(previousRich) "\n"
+                else rwIssue("Error", "StateTooLarge", attributeName)
+            }
+            if (di_arg_mode == "commit" && !canWrite(rwObject.(attributeName))) rwIssue("Error", "AttributeNotWritable", attributeName)
+        }
+    }
+    if (rwRequiredCount == 0) rwIssue("Warning", "RequiredRulesNotDeclared", "")
+    for (i = 0; i < rwRequiredCount; i++) {
+        string requiredName = rwRequired[i], requiredValue = ""
+        AttrDef definition = find(rwModule, requiredName)
+        if (null definition) { rwIssue("Error", "AttributeMissing", requiredName); continue }
+        if (!definition.object || definition.dxl) { rwIssue("Error", "UnsupportedAttribute", requiredName); continue }
+        bool supplied = false
+        int j
+        for (j = 0; j < rwCount; j++) if (rwNames[j] == requiredName) { supplied = true; requiredValue = rwExpected[j] }
+        if (!supplied && !null rwObject && canRead(rwObject.(requiredName))) requiredValue = unicodeString(rwObject.(requiredName))
+        if (!rwHasText(requiredValue)) rwIssue("Error", "RequiredValueMissing", requiredName)
+        rwStateField(requiredName); rwStateField(requiredValue)
+    }
+    if (di_arg_mode == "commit") {
+        if (!isEdit(rwModule) || !canWrite(rwModule) || !canModify(rwModule)) rwIssue("Error", "PermissionDenied", "")
+        if (rwRequestedAbsolute == 0 && !canCreate(rwModule)) rwIssue("Error", "PermissionDenied", "")
+        if (!null rwObject && !canModify(rwObject)) rwIssue("Error", "PermissionDenied", "")
+        if (di_arg_position == "FirstChild" || di_arg_position == "LastChild") {
+            if (null rwAnchor || !canCreate(rwAnchor)) rwIssue("Error", "PermissionDenied", "")
+        } else if (di_arg_position == "After" && !null rwAnchor) {
+            Object container = parent(rwAnchor)
+            if (!null container && !canCreate(container)) rwIssue("Error", "PermissionDenied", "")
+        }
+    } else rwIssue("Warning", "EditRecheckRequired", "")
+}
+bool rwPositionMatches() {
+    if (!rwOrdinary(rwObject)) return false
+    if (di_arg_position == "Keep" && level(rwObject) != rwOriginalLevel) return false
+    int desiredParent = rwOriginalParent
+    if (di_arg_position == "FirstInModule") desiredParent = 0
+    else if (di_arg_position == "After") desiredParent = rwParentId(rwAnchor)
+    else if (di_arg_position == "FirstChild" || di_arg_position == "LastChild") desiredParent = rwAbs(rwAnchor)
+    if (rwParentId(rwObject) != desiredParent) return false
+    if (di_arg_position == "Keep") return true
+    int previousId = 0, firstId = 0, lastId = 0, beforeTarget = 0, count = 0
+    Object o
+    for o in entire(rwModule) do {
+        count++
+        if (count > 100000 || !canRead(o)) return false
+        if (!isDeleted(o) && rwParentId(o) == desiredParent) {
+            if (firstId == 0) firstId = rwAbs(o)
+            if (o == rwObject) beforeTarget = previousId
+            previousId = rwAbs(o); lastId = rwAbs(o)
+        }
+    }
+    if (di_arg_position == "FirstInModule" || di_arg_position == "FirstChild") return firstId == rwAbs(rwObject)
+    if (di_arg_position == "LastChild") return lastId == rwAbs(rwObject)
+    if (di_arg_position == "After") return beforeTarget == rwAbs(rwAnchor)
+    return true
+}
+bool rwReadback() {
+    if (!rwPositionMatches()) return false
+    int i
+    for (i = 0; i < rwCount; i++) {
+        if (!rwValueMatches(rwObject, i)) return false
+    }
+    for (i = 0; i < rwRequiredCount; i++) {
+        if (!canRead(rwObject.(rwRequired[i])) || !rwHasText(unicodeString(rwObject.(rwRequired[i])))) return false
+    }
+    int delta = level(rwObject) - rwOriginalLevel
+    for (i = 0; i < rwDescCount; i++) {
+        Object child = rwFind(rwDescIds[i])
+        if (!rwOrdinary(child) || rwParentId(child) != rwDescParents[i] || level(child) != rwDescLevels[i] + delta) return false
+    }
+    return true
+}
+
+int rwOffset = 0
+while (rwOffset < length(di_arg_attributes)) {
+    if (rwCount >= 32) { rwInputOk = false; break }
+    rwNames[rwCount] = rwToken(di_arg_attributes, rwOffset, '\t')
+    rwFormats[rwCount] = rwToken(di_arg_attributes, rwOffset, '\t')
+    rwValues[rwCount] = rwToken(di_arg_attributes, rwOffset, '\t')
+    rwExpected[rwCount] = rwToken(di_arg_attributes, rwOffset, '\n')
+    if (rwFormats[rwCount] == "PlainText") rwExpected[rwCount] = rwValues[rwCount]
+    else if (rwFormats[rwCount] != "DoorsRichText") rwInputOk = false
+    int rwDuplicate
+    for (rwDuplicate = 0; rwDuplicate < rwCount; rwDuplicate++) if (rwNames[rwDuplicate] == rwNames[rwCount]) rwInputOk = false
+    rwCount++
+}
+if (di_arg_required != "") {
+    string rwRequiredInput = di_arg_required "\n"
+    rwOffset = 0
+    while (rwOffset < length(rwRequiredInput)) {
+        if (rwRequiredCount >= 32) { rwInputOk = false; break }
+        rwRequired[rwRequiredCount] = rwRawLine(rwRequiredInput, rwOffset)
+        rwRequiredCount++
+    }
+}
+if (di_arg_mode != "schema") {
+    if (rwRequestedAbsolute == 0) { rwAddStep("Create", ""); rwAddStep("Position", "") }
+    int rwPlanIndex
+    for (rwPlanIndex = 0; rwPlanIndex < rwCount; rwPlanIndex++) rwAddStep("Attribute", rwNames[rwPlanIndex])
+    if (rwRequestedAbsolute > 0 && di_arg_position != "Keep") rwAddStep("Position", "")
+    rwAddStep("Save", ""); rwAddStep("Verify", "")
+}
+if (di_arg_mode == "schema") rwOutcome = "Schema"
+if (!rwInputOk || (di_arg_mode != "schema" && di_arg_mode != "preview" && di_arg_mode != "commit") ||
+    (di_arg_position != "Keep" && di_arg_position != "FirstInModule" && di_arg_position != "After" && di_arg_position != "FirstChild" && di_arg_position != "LastChild")) {
+    rwIssue("Error", "InvalidValue", "")
+}
+if (di_arg_mode == "commit") {
+    rwOutcome = "Blocked"
+    if (length(di_arg_approvedPlan) != 32 || di_arg_expectedState == "") { rwIssue("Error", "ContextChanged", ""); rwInputOk = false }
+}
+noError()
+rwDatabase = getDatabaseIdentifier()
+rwUser = doorsname()
+Item rwItem = item(di_arg_path)
+if (null rwItem) rwIssue("Error", "ModuleUnavailable", "")
+else if (isDeleted(rwItem) || !canRead(rwItem)) rwIssue("Error", "ModuleUnavailable", "")
+else if (type(rwItem) != "Formal") rwIssue("Error", "NotFormalModule", "")
+else if (rwReady && rwInputOk) {
+    rwModuleId = uniqueID(rwItem); rwQualifiedId = qualifiedUniqueID(rwItem)
+    ModName_ rwReference = module(di_arg_path)
+    rwVersion = moduleVersion(rwReference)
+    Module rwLoaded = data(rwVersion)
+    if (!null rwLoaded && (di_arg_mode != "schema" || !isRead(rwLoaded))) rwIssue("Error", "AlreadyOpen", "")
+    else if (di_arg_mode != "schema" && isLocked(rwReference)) rwIssue("Error", "Locked", "")
+    else {
+        if (!null rwLoaded) rwModule = rwLoaded
+        else {
+            if (di_arg_mode == "commit") rwModule = edit(di_arg_path, false, true, true)
+            else rwModule = load(rwVersion, false)
+            if (!null rwModule) rwOwned = true
+        }
+        if (null rwModule) rwIssue("Error", "ModuleUnavailable", "")
+        else if (isBaseline(rwModule)) rwIssue("Error", "BaselineNotWritable", "")
+        else if (fullName(rwModule) != di_arg_path || uniqueID(rwModule) != rwModuleId || qualifiedUniqueID(rwModule) != rwQualifiedId) rwIssue("Error", "ContextChanged", "")
+        else {
+            current = rwModule
+            if ((di_arg_mode == "commit" && !isEdit(rwModule)) || (di_arg_mode != "commit" && !isRead(rwModule))) rwIssue("Error", "AlreadyOpen", "")
+            if (di_arg_mode == "commit" && unsaved(rwModule)) rwIssue("Error", "ContextChanged", "")
+            rwCatalog()
+            if (di_arg_mode != "schema") {
+                if (!canModify(rwItem)) rwIssue("Error", "PermissionDenied", "")
+                rwInspect()
+            } else rwIssue("Warning", "RequiredRulesNotDeclared", "")
+        }
+    }
+}
+string rwInspectionError = lastError()
+if (!null rwInspectionError) rwIssue("Error", "NativeFailure", "")
+if (rwDatabase == "" || rwUser == "") rwIssue("Error", "ModuleUnavailable", "")
+
+if (di_arg_mode == "commit" && rwReady && rwInputOk) {
+    if (stringOf(rwState) != di_arg_expectedState) { rwOutcome = "ContextChanged"; rwIssue("Error", "ContextChanged", "") }
+    else {
+        rwOutcome = "PartialFailure"
+        int rwStep = 0
+        if (rwRequestedAbsolute == 0) {
+            rwWriteAttempted = true
+            noError()
+            if (di_arg_position == "FirstInModule") rwObject = create(rwModule)
+            else if (di_arg_position == "After") rwObject = create(after(rwAnchor))
+            else if (di_arg_position == "FirstChild") rwObject = create(below(rwAnchor))
+            else if (di_arg_position == "LastChild") rwObject = create(last(below(rwAnchor)))
+            string rwCreateError = lastError()
+            if (!null rwCreateError || null rwObject) rwFailed(rwStep, "NativeFailure")
+            else {
+                rwApplied(rwStep)
+                rwIdentity()
+                if (rwPositionMatches()) rwApplied(rwStep + 1)
+                else rwFailed(rwStep + 1, "ReadbackMismatch")
+            }
+            rwStep += 2
+        }
+        int rwChange
+        for (rwChange = 0; rwChange < rwCount; rwChange++) {
+            if (rwReady) {
+                noError()
+                if (!rwOrdinary(rwObject) || !canModify(rwObject) || !canWrite(rwObject.(rwNames[rwChange]))) rwFailed(rwStep, "AttributeNotWritable")
+                else {
+                    rwWriteAttempted = true
+                    if (rwFormats[rwChange] == "DoorsRichText") rwObject.(rwNames[rwChange]) = richText(rwValues[rwChange])
+                    else rwObject.(rwNames[rwChange]) = rwValues[rwChange]
+                    string rwAssignmentError = lastError()
+                    if (!null rwAssignmentError) rwFailed(rwStep, "NativeFailure")
+                    else if (!rwValueMatches(rwObject, rwChange)) rwFailed(rwStep, "ReadbackMismatch")
+                    else rwApplied(rwStep)
+                }
+            }
+            rwStep++
+        }
+        if (rwRequestedAbsolute > 0 && di_arg_position != "Keep") {
+            if (rwReady) {
+                rwWriteAttempted = true
+                noError()
+                if (di_arg_position == "After") move(rwObject, rwAnchor)
+                else if (di_arg_position == "FirstChild") move(rwObject, below(rwAnchor))
+                else if (di_arg_position == "LastChild") move(rwObject, last(below(rwAnchor)))
+                string rwMoveError = lastError()
+                if (!null rwMoveError) rwFailed(rwStep, "NativeFailure")
+                else if (!rwPositionMatches()) rwFailed(rwStep, "ReadbackMismatch")
+                else rwApplied(rwStep)
+            }
+            rwStep++
+        }
+        if (rwReady) {
+            noError()
+            bool rwBeforeSaveVerified = rwReadback()
+            string rwReadbackError = lastError()
+            if (!rwBeforeSaveVerified || !null rwReadbackError) rwFailed(rwStep, "ReadbackMismatch")
+            else {
+                rwWriteAttempted = true
+                rwPersistence = "Unknown"
+                noError()
+                save(rwModule)
+                string rwSaveError = lastError()
+                if (!null rwSaveError || unsaved(rwModule)) rwFailed(rwStep, "NativeFailure")
+                else {
+                    rwApplied(rwStep)
+                    rwPersistence = "Saved"
+                    rwIdentity()
+                    noError()
+                    bool rwClosed = close(rwModule, false)
+                    string rwCloseError = lastError()
+                    if (!rwClosed || !null rwCloseError) rwFailed(rwStep + 1, "CleanupFailed")
+                    else {
+                        rwModule = null
+                        noError()
+                        rwModule = load(rwVersion, false)
+                        bool rwPersisted = false
+                        if (!null rwModule && isRead(rwModule) && !isBaseline(rwModule) &&
+                            uniqueID(rwModule) == rwModuleId && qualifiedUniqueID(rwModule) == rwQualifiedId) {
+                            rwObject = rwFind(rwAbsolute)
+                            rwAnchor = rwFind(rwRequestedAnchor)
+                            rwPersisted = rwReadback()
+                        }
+                        string rwVerifyError = lastError()
+                        if (!rwPersisted || !null rwVerifyError) rwFailed(rwStep + 1, "ReadbackMismatch")
+                        else { rwApplied(rwStep + 1); rwOutcome = "Applied"; rwIdentity() }
+                    }
+                }
+            }
+        }
+    }
+}
+if (rwOwned && !null rwModule) {
+    if (di_arg_mode == "commit" && rwWriteAttempted && rwOutcome != "Applied" && !isRead(rwModule)) rwCleanup = "LeftOpenForReview"
+    else {
+        noError()
+        bool rwCanClose = !unsaved(rwModule)
+        bool rwClosed = false
+        if (rwCanClose) rwClosed = close(rwModule, false)
+        string rwCleanupError = lastError()
+        if (!rwClosed || !null rwCleanupError) { rwCleanup = "Failed"; rwIssue("Error", "CleanupFailed", "") }
+        else { rwModule = null; rwCleanup = "Closed" }
+    }
+} else if (rwOwned && null rwModule) rwCleanup = "NotLoaded"
+if (rwOutcome == "Applied" && rwCleanup != "Closed") rwOutcome = "OutcomeUnknown"
+if (rwPersistence == "Unknown") rwOutcome = "OutcomeUnknown"
+if (!null rwPreviousModule) { noError(); current = rwPreviousModule; string rwRestoreError = lastError() }
+
+Buffer rwReply = create
+rwReply = "DOORS_REQUIREMENT_WRITE|1|" di_requestId "\nM\t" di_arg_mode "\t" rwEscape(di_arg_path) "\t" //-
+    rwEscape(rwDatabase) "\t" rwEscape(rwUser) "\t" rwEscape(rwModuleId) "\t" rwEscape(rwQualifiedId) "\t" //-
+    rwEscape(stringOf(rwState)) "\t" rwOutcome "\t" rwPersistence "\t" rwCleanup "\t" (rwAbsolute "") "\t" //-
+    rwEscape(rwIdentifier) "\t" (rwParent "") "\t" (rwLevel "") "\n"
+rwReply += stringOf(rwSchema)
+rwReply += stringOf(rwBefore)
+rwReply += stringOf(rwIssues)
+int rwReportStep
+for (rwReportStep = 0; rwReportStep < rwStepCount; rwReportStep++) rwReply += "S\t" rwStepKinds[rwReportStep] "\t" //-
+    rwEscape(rwStepNames[rwReportStep]) "\t" rwStepStatuses[rwReportStep] "\t" rwStepErrors[rwReportStep] "\n"
+rwReply += "END\n"
+oleSetResult(stringOf(rwReply))
+delete(rwReply); delete(rwSchema); delete(rwIssues); delete(rwState); delete(rwBefore)

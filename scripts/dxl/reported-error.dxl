@@ -1,0 +1,2 @@
+// Application error contract. No database access.
+di_error = "EXAMPLE_ERROR"

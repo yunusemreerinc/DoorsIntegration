@@ -1,0 +1,12 @@
+// Integration-test verification only. No module open, write, save, delete or current-folder assignment.
+string verificationResult = "FAILED"
+noError()
+Item verificationItem = item(di_arg_path)
+if (!null verificationItem) {
+    if (canRead(verificationItem) && type(verificationItem) == "Formal" &&
+        uniqueID(verificationItem) == di_arg_moduleId && qualifiedUniqueID(verificationItem) == di_arg_qualifiedId &&
+        description(verificationItem) == di_arg_description) verificationResult = "VERIFIED"
+}
+string verificationError = lastError()
+if (!null verificationError) verificationResult = "FAILED"
+oleSetResult(verificationResult)

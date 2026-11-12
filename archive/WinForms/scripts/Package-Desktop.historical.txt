@@ -1,0 +1,13 @@
+param(
+    [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
+    [ValidateSet('x86', 'x64')][string]$Platform = 'x86',
+    [switch]$SkipBuild,
+    [string]$OutputDirectory
+)
+$ErrorActionPreference = 'Stop'
+# The main Desktop distribution is the unified WPF client. Legacy WinForms has its own packaging command.
+$artifacts = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path (Split-Path -Parent $PSScriptRoot) ('artifacts\releases\' + (Get-Date -Format 'yyyy-MM-dd') + '-unified') }
+& (Join-Path $PSScriptRoot 'Package-Wpf.ps1') -Configuration $Configuration -Platform $Platform -SkipBuild:$SkipBuild -OutputDirectory $artifacts
+$archive = Join-Path $artifacts "DoorsIntegration-Desktop-$Platform.zip"
+Copy-Item -LiteralPath (Join-Path $artifacts "DoorsIntegration-Wpf-$Platform.zip") -Destination $archive -Force
+Write-Output $archive

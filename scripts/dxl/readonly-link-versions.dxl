@@ -1,0 +1,123 @@
+// Read-only endpoint VERSION evidence. Does not create/save/edit/delete baselines or data.
+// delete(ModuleVersion) below releases allocated metadata handles, not database objects.
+// Read-only observation policy. Exact 9.5/9.7 runtime acceptance is NOT_RUN until tested.
+string bvEscape(string value) {
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(value); i++) {
+        char c = value[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+// path, qualified module ID, kind, major, minor, suffix, opaque native label, Absolute Number, read state.
+string bvEndpoint(ModuleVersion mv, int absolute) {
+    string path = "", id = "", kind = "Unknown", maj = "", min = "", suf = "", raw = "", state = "Unknown"
+    if (!null mv) {
+        path = fullName(mv)
+        bool baselineVersion = isBaseline(mv)
+        kind = "Current"
+        if (baselineVersion) {
+            kind = "Baseline"
+            Baseline b = baseline(mv)
+            if (!null b) { maj = major(b) ""; min = minor(b) ""; suf = suffix(b); raw = versionString(mv) }
+        }
+        Item mi = item(path)
+        if (!null mi) {
+            if (!canRead(mi)) state = "AccessDenied"
+            else if (type(mi) == "Formal") {
+                id = qualifiedUniqueID(mi)
+                if (!baselineVersion || baselineExists(mv)) state = "Verified"
+            }
+        }
+    }
+    return bvEscape(path) "\t" bvEscape(id) "\t" kind "\t" maj "\t" min "\t" bvEscape(suf) "\t" bvEscape(raw) "\t" absolute "\t" state
+}
+Stream bvOutput = write(di_outputPath, 65001)
+if (null bvOutput) di_error = "BASELINE_VERSION_OUTPUT_FAILED"
+Module bvAnchor = null
+ModuleVersion bvAnchorVersion = null
+bool bvOwned = false, bvComplete = true, bvStop = false
+int bvCount = 0, bvVisited = 0, bvBytes = 4096
+if (!null bvOutput) {
+    bvOutput << "BASELINE_LINK_VERSIONS\t1\t" di_requestId "\n"
+    noError()
+    Item anchorItem = item(di_arg_path)
+    Item linkItem = item(di_arg_linkPath)
+    bool ready = getDatabaseIdentifier() == di_arg_database && doorsname() == di_arg_user && doorsVersion() == di_arg_clientVersion && intOf(session()) == intOf(di_arg_session)
+    if (ready) ready = !null anchorItem && !null linkItem
+    if (ready) ready = canRead(anchorItem) && canRead(linkItem) && type(anchorItem) == "Formal" && type(linkItem) == "Link" && qualifiedUniqueID(anchorItem) == di_arg_moduleId && qualifiedUniqueID(linkItem) == di_arg_linkId
+    if (ready) {
+        ModName_ reference = module(di_arg_path)
+        string suffixValue = null
+        if (di_arg_suffix != "") suffixValue = di_arg_suffix
+        if (di_arg_current == "true") bvAnchorVersion = moduleVersion(reference)
+        else {
+            Baseline selected = baseline(intOf(di_arg_major), intOf(di_arg_minor), suffixValue)
+            bvAnchorVersion = moduleVersion(reference, selected)
+        }
+        ready = !null bvAnchorVersion
+        if (ready && di_arg_current != "true") ready = baselineExists(bvAnchorVersion)
+        if (ready) {
+            bvAnchor = data(bvAnchorVersion)
+            if (!null bvAnchor) ready = isRead(bvAnchor)
+            else {
+                if (di_arg_current == "true") bvAnchor = read(di_arg_path, false)
+                else bvAnchor = load(bvAnchorVersion, false)
+                bvOwned = !null bvAnchor
+            }
+            ready = ready && !null bvAnchor
+            if (ready) ready = isRead(bvAnchor) && !unsaved(bvAnchor) && fullName(bvAnchor) == di_arg_path && (isBaseline(bvAnchor) == (di_arg_current != "true"))
+        }
+    }
+    if (!ready) bvComplete = false
+    if (ready) {
+        Object anchorObject
+        for anchorObject in entire(bvAnchor) do {
+            if (bvStop) break
+            if (++bvVisited > intOf(di_arg_maxObjects)) { bvComplete = false; break }
+            if (!canRead(anchorObject) || !canRead(anchorObject."Absolute Number")) { bvComplete = false; continue }
+            if (isDeleted(anchorObject)) continue
+            int anchorAbsolute = anchorObject."Absolute Number"
+            Link outgoing
+            for outgoing in all (anchorObject -> di_arg_linkPath) do {
+                if (bvStop) break
+                ModuleVersion sv = sourceVersion(outgoing)
+                ModuleVersion tv = targetVersion(outgoing)
+                string row = "L\tOutgoing\t" echo(outgoing) "\t" bvEscape(di_arg_linkPath) "\t" bvEscape(di_arg_linkId) "\t" bvEndpoint(sv, sourceAbsNo(outgoing)) "\t" bvEndpoint(tv, targetAbsNo(outgoing)) "\n"
+                if (bvCount >= intOf(di_arg_maxLinks) || length(row) > 65536 || bvBytes + length(row) * 4 > intOf(di_arg_maxBytes)) { bvComplete = false; bvStop = true }
+                else { bvOutput << row; bvCount++; bvBytes += length(row) * 4 }
+                if (!null sv) delete(sv)
+                if (!null tv) delete(tv)
+            }
+            LinkRef incoming
+            for incoming in all (anchorObject <- di_arg_linkPath) do {
+                if (bvStop) break
+                ModuleVersion sv = sourceVersion(incoming)
+                // There is NO documented targetVersion(LinkRef). Use the observed anchor ModuleVersion.
+                string row = "L\tIncoming\t" echo(incoming) "\t" bvEscape(di_arg_linkPath) "\t" bvEscape(di_arg_linkId) "\t" bvEndpoint(sv, sourceAbsNo(incoming)) "\t" bvEndpoint(bvAnchorVersion, anchorAbsolute) "\n"
+                if (bvCount >= intOf(di_arg_maxLinks) || length(row) > 65536 || bvBytes + length(row) * 4 > intOf(di_arg_maxBytes)) { bvComplete = false; bvStop = true }
+                else { bvOutput << row; bvCount++; bvBytes += length(row) * 4 }
+                if (!null sv) delete(sv)
+            }
+        }
+    }
+    string readError = lastError()
+    if (!null readError) bvComplete = false
+    if (bvOwned) {
+        noError()
+        bool closed = close(bvAnchor, false)
+        string closeError = lastError()
+        if (!closed || !null closeError) bvComplete = false
+    }
+    if (!null bvAnchorVersion) delete(bvAnchorVersion)
+    bvOutput << "END\t" bvComplete "\t" bvCount "\n"
+    close(bvOutput)
+}

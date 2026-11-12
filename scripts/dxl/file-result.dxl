@@ -1,0 +1,9 @@
+// ASCII example. Encoding of a non-ASCII file is the script author's responsibility.
+// Close the stream before returning; the executor then opens the file for reading.
+Stream sampleOutput = write(di_outputPath)
+if (null sampleOutput) {
+    di_error = "OUTPUT_OPEN_FAILED"
+} else {
+    sampleOutput << "sample file result\n"
+    close(sampleOutput)
+}

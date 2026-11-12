@@ -1,0 +1,113 @@
+// Database-read-only hierarchy metadata. No module open, edit, save, create or delete.
+// Context parameters are escaped by DxlExecutor: di_arg_path, di_arg_name, di_arg_mode.
+// list enumerates ONE folder; the C# reader owns bounded breadth-first traversal.
+// lookup resolves one known item path without opening its module.
+Buffer discoveryOutput = create
+discoveryOutput = "DOORS_DISCOVERY|1|" di_requestId "\n"
+
+string discoveryEscape(string value) {
+    Buffer escaped = create
+    escaped = ""
+    int index
+    for (index = 0; index < length(value); index++) {
+        char c = value[index]
+        if (c == '\\') escaped += "\\\\"
+        else if (c == '\t') escaped += "\\t"
+        else if (c == '\r') escaped += "\\r"
+        else if (c == '\n') escaped += "\\n"
+        else escaped += c
+    }
+    string result = stringOf(escaped)
+    delete(escaped)
+    return result
+}
+
+string discoveryRow(string role, string path, string itemName, string itemType, string access) {
+    return role "\t" discoveryEscape(path) "\t" discoveryEscape(itemName) "\t" itemType "\t" access "\n"
+}
+
+Item discoveryScope = null
+Folder discoveryFolder = null
+string discoveryPath = di_arg_path
+string discoveryName = di_arg_name
+string discoveryType = "Unknown"
+string discoveryAccess = "DeniedOrNotFound"
+bool discoveryContainer = false
+int discoveryCount = 0
+bool discoveryCut = false
+bool discoveryNullItem = false
+
+noError()
+if (di_arg_path == "/" && di_arg_mode == "list") {
+    discoveryFolder = folder("/")
+    if (!null discoveryFolder) {
+        discoveryType = "DatabaseRoot"
+        discoveryContainer = true
+        if (canRead(discoveryFolder)) discoveryAccess = "Readable"
+        else discoveryAccess = "AccessDenied"
+    }
+} else {
+    discoveryScope = item(di_arg_path)
+    if (!null discoveryScope) {
+        discoveryPath = fullName(discoveryScope)
+        discoveryName = name(discoveryScope)
+        discoveryType = type(discoveryScope)
+        if (canRead(discoveryScope)) discoveryAccess = "Readable"
+        else discoveryAccess = "AccessDenied"
+        discoveryContainer = discoveryType == "Project" || discoveryType == "Folder"
+        if (di_arg_mode == "list" && discoveryContainer && discoveryAccess == "Readable") {
+            discoveryFolder = folder(discoveryPath)
+            if (null discoveryFolder) discoveryAccess = "Unavailable"
+        }
+    }
+}
+string discoveryLookupError = lastError()
+if (!null discoveryLookupError) {
+    discoveryPath = di_arg_path
+    discoveryName = di_arg_name
+    discoveryType = "Unknown"
+    discoveryAccess = "Unavailable"
+}
+discoveryOutput += discoveryRow("S", discoveryPath, discoveryName, discoveryType, discoveryAccess)
+if (discoveryAccess != "Readable") {
+    if (!null discoveryLookupError) discoveryOutput += "W\tLookupFailed\n"
+    else discoveryOutput += "W\tAccessRestricted\n"
+} else if (di_arg_mode == "lookup") {
+    if (discoveryType != "Formal") discoveryOutput += "W\tNotFormalModule\n"
+} else if (!discoveryContainer) {
+    discoveryOutput += "W\tScopeNotContainer\n"
+} else {
+    Item discoveryChild
+    // A failure affects this folder only; the managed reader may continue other queued folders.
+    // Do not nest noError/lastError calls inside this enumeration.
+    noError()
+    for discoveryChild in discoveryFolder do {
+        if (null discoveryChild) {
+            discoveryNullItem = true
+            continue
+        }
+        if (discoveryCount >= 10000) {
+            discoveryCut = true
+            break
+        }
+        string childPath = fullName(discoveryChild)
+        string childName = name(discoveryChild)
+        string childType = type(discoveryChild)
+        string childAccess = "AccessDenied"
+        if (canRead(discoveryChild)) childAccess = "Readable"
+        string childRow = discoveryRow("I", childPath, childName, childType, childAccess)
+        if (length(discoveryOutput) + length(childRow) > 2000000) {
+            discoveryCut = true
+            break
+        }
+        discoveryOutput += childRow
+        discoveryCount++
+    }
+    string discoveryEnumerationError = lastError()
+    if (!null discoveryEnumerationError || discoveryNullItem) discoveryOutput += "W\tEnumerationFailed\n"
+}
+int discoveryCutFlag = 0
+if (discoveryCut) discoveryCutFlag = 1
+discoveryOutput += "END\t" discoveryCount "\t" discoveryCutFlag "\n"
+oleSetResult(stringOf(discoveryOutput))
+delete(discoveryOutput)

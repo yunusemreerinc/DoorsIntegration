@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\DoorsIntegration.AcceptanceHost\DoorsIntegration.AcceptanceHost.csproj" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Wpf\DoorsIntegration.Wpf.csproj" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="UIAutomationProvider" />
+    <Reference Include="UIAutomationTypes" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Processing\DoorsIntegration.Processing.csproj" />
+  </ItemGroup>
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="..\dxl\verify-created-module.dxl" Link="scripts\dxl\verify-created-module.dxl" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Com\DoorsIntegration.Com.csproj" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Dxl\DoorsIntegration.Dxl.csproj" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Export\DoorsIntegration.Export.csproj" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Console\DoorsIntegration.Console.csproj" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,239 @@
+// Read-only object extraction. Never edit/share/save/undelete, create baselines or change ACLs.
+// Private UTF-8 output is owned by DxlExecutor. Only a completion marker goes through COM Result.
+// Object/file limits bound extraction; the managed wait deadline does not cancel COM execution.
+// The executor supplies the configured watchdog pragma for this invocation.
+Stream rqOutput = null
+Module rqModule = null
+ModuleVersion rqVersion = null
+bool rqOwned = false
+bool rqObservedBaseline = false
+string rqStatus = "DeniedOrNotFound"
+string rqQualifiedId = ""
+string rqOwnership = "NotLoaded"
+string rqCleanup = "NotOwned"
+bool rqTruncated = false
+bool rqEnumerationFailed = false
+int rqVisited = 0
+int rqWritten = 0
+int rqDenied = 0
+int rqDeletedExcluded = 0
+int rqUnavailable = 0
+int rqEstimatedBytes = 49152
+int rqMaxObjects = intOf(di_arg_maxObjects)
+int rqMaxField = intOf(di_arg_maxField)
+int rqMaxObject = intOf(di_arg_maxObject)
+int rqMaxFile = intOf(di_arg_maxFile)
+int rqObjectCharacters = 0
+Buffer rqObjectBuffer = create
+rqObjectBuffer = ""
+
+string rqEscape(string value) {
+    Buffer escaped = create
+    escaped = ""
+    int index
+    for (index = 0; index < length(value); index++) {
+        char c = value[index]
+        if (c == '\\') escaped += "\\\\"
+        else if (c == '\t') escaped += "\\t"
+        else if (c == '\r') escaped += "\\r"
+        else if (c == '\n') escaped += "\\n"
+        else escaped += c
+    }
+    string valueOut = stringOf(escaped)
+    delete(escaped)
+    return valueOut
+}
+
+void rqField(Object objectRef, string attributeName, bool metadataOnly) {
+    string plainStatus = "NotRequested"
+    string richStatus = "NotRequested"
+    string plainValue = ""
+    string richValue = ""
+    string typeName = ""
+    if (!metadataOnly) {
+        AttrDef definition = find(rqModule, attributeName)
+        if (null definition) {
+            plainStatus = "DeniedOrNotFound"
+            richStatus = "DeniedOrNotFound"
+        } else if (!definition.object) {
+            plainStatus = "NotObjectAttribute"
+            richStatus = "NotObjectAttribute"
+        } else if (!canRead(objectRef.attributeName)) {
+            plainStatus = "AccessDenied"
+            richStatus = "AccessDenied"
+        } else {
+            bool generated = definition.dxl
+            if (generated && di_arg_allowDxl != "1") {
+                plainStatus = "DxlEvaluationDisabled"
+                richStatus = "DxlEvaluationDisabled"
+            } else {
+                typeName = definition.typeName
+                plainValue = objectRef.attributeName ""
+                plainStatus = "Readable"
+                AttrType attributeType = definition.type
+                AttrBaseType baseType = attributeType.type
+                if (baseType == attrText || baseType == attrString) {
+                    richValue = richTextWithOle(objectRef.attributeName)
+                    richStatus = "Readable"
+                } else richStatus = "NotApplicable"
+            }
+        }
+    }
+    if (length(plainValue) > rqMaxField) { plainValue = ""; plainStatus = "TooLarge" }
+    if (length(richValue) > rqMaxField) { richValue = ""; richStatus = "TooLarge" }
+    int fieldSize = length(plainValue) + length(richValue)
+    if (fieldSize > rqMaxObject - rqObjectCharacters) {
+        plainValue = ""; richValue = ""
+        plainStatus = "TooLarge"; richStatus = "TooLarge"
+        fieldSize = 0
+    }
+    rqObjectCharacters += fieldSize
+    rqObjectBuffer += "V\t" rqEscape(attributeName) "\t" rqEscape(typeName) "\t" plainStatus "\t" rqEscape(plainValue) "\t" richStatus "\t" rqEscape(richValue) "\n"
+}
+
+void rqFields(Object objectRef, bool metadataOnly) {
+    rqField(objectRef, "Object Heading", metadataOnly)
+    rqField(objectRef, "Object Text", metadataOnly)
+    Buffer attributeName = create
+    attributeName = ""
+    int index
+    for (index = 0; index < length(di_arg_attributes); index++) {
+        char c = di_arg_attributes[index]
+        if (c == '\n') {
+            rqField(objectRef, stringOf(attributeName), metadataOnly)
+            attributeName = ""
+        } else attributeName += c
+    }
+    delete(attributeName)
+}
+
+// Suppression blocks are sequential, not nested. No raw lastError text is exported/logged.
+noError()
+rqOutput = write(di_outputPath, 65001)
+string rqOpenOutputError = lastError()
+if (null rqOutput || !null rqOpenOutputError) {
+    di_error = "REQUIREMENT_OUTPUT_FAILED"
+} else {
+    noError()
+    Item moduleItem = item(di_arg_path)
+    if (!null moduleItem) {
+        if (type(moduleItem) != "Formal") rqStatus = "NotFormalModule"
+        else if (isDeleted(moduleItem)) rqStatus = "ModuleDeleted"
+        else if (!canRead(moduleItem)) rqStatus = "AccessDenied"
+        else {
+            rqQualifiedId = qualifiedUniqueID(moduleItem)
+            ModName_ moduleRef = module(di_arg_path)
+            if (!null moduleRef) {
+                if (di_arg_version == "Baseline") {
+                    string baselineSuffix = null
+                    if (di_arg_suffix != "") baselineSuffix = di_arg_suffix
+                    Baseline selected = baseline(intOf(di_arg_major), intOf(di_arg_minor), baselineSuffix)
+                    rqVersion = moduleVersion(moduleRef, selected)
+                    if (!null rqVersion && baselineExists(rqVersion)) rqStatus = "Available"
+                    else rqStatus = "BaselineUnavailable"
+                } else {
+                    rqVersion = moduleVersion(moduleRef)
+                    if (!null rqVersion) rqStatus = "Available"
+                }
+            }
+        }
+    }
+    if (rqStatus == "Available") {
+        rqModule = data(rqVersion)
+        if (!null rqModule) {
+            if (!isRead(rqModule)) rqStatus = "AlreadyOpenForWrite"
+            else rqOwnership = "BorrowedReadOnly"
+        } else if (di_arg_open != "1") rqStatus = "NotLoadedByPolicy"
+        else {
+            rqModule = load(rqVersion, false)
+            if (null rqModule) {
+                if (di_arg_version == "Baseline") rqStatus = "BaselineUnavailable"
+                else rqStatus = "DeniedOrNotFound"
+            } else {
+                rqOwned = true
+                rqOwnership = "OwnedReadOnly"
+            }
+        }
+        if (rqStatus == "Available") {
+            rqObservedBaseline = isBaseline(rqModule)
+            if (!isRead(rqModule) || fullName(rqModule) != di_arg_path || rqObservedBaseline != (di_arg_version == "Baseline") ||
+                rqQualifiedId == "" || qualifiedUniqueID(rqModule) != rqQualifiedId) rqStatus = "ReadFailed"
+            else if (!canRead(rqModule)) rqStatus = "AccessDenied"
+        }
+    }
+    string rqLookupError = lastError()
+    if (!null rqLookupError) rqStatus = "ReadFailed"
+
+    noError()
+    rqOutput << "DOORS_REQUIREMENTS\t2\t" di_requestId "\n"
+    int observedBaseline = 0
+    if (rqObservedBaseline) observedBaseline = 1
+    rqOutput << "M\t" rqEscape(di_arg_path) "\t" di_arg_version "\t" di_arg_major "\t" di_arg_minor "\t" rqEscape(di_arg_suffix) "\t" observedBaseline "\t" rqOwnership "\n"
+    rqOutput << "Q\t" rqEscape(rqQualifiedId) "\n"
+    string rqHeaderError = lastError()
+    if (!null rqHeaderError) di_error = "REQUIREMENT_OUTPUT_FAILED"
+    if (rqStatus == "Available" && di_error == "") {
+        Object objectRef
+        noError()
+        for objectRef in entire(rqModule) do {
+            if (rqVisited >= rqMaxObjects) { rqTruncated = true; break }
+            rqVisited++
+            if (null objectRef) continue
+            if (!canRead(objectRef) || !canRead(objectRef."Absolute Number")) { rqDenied++; continue }
+            bool deleted = isDeleted(objectRef)
+            if (deleted && di_arg_deleted == "Exclude") { rqDeletedExcluded++; continue }
+            int absoluteNumber = objectRef."Absolute Number"
+            string objectIdentifier = identifier(objectRef)
+            string objectNumber = number(objectRef)
+            string numberStatus = "Readable"
+            if (null objectNumber || objectNumber == "") numberStatus = "ReadFailed"
+            int objectLevel = level(objectRef)
+            if (absoluteNumber <= 0 || null objectIdentifier || objectIdentifier == "" || objectLevel < 1) continue
+            string parentNumber = ""
+            string parentStatus = "Unavailable"
+            Object parentObject = parent(objectRef)
+            if (null parentObject) {
+                if (objectLevel == 1) parentStatus = "Root"
+            } else if (canRead(parentObject) && canRead(parentObject."Absolute Number")) {
+                int parentAbsolute = parentObject."Absolute Number"
+                parentNumber = parentAbsolute ""
+                parentStatus = "Resolved"
+            }
+            int deletedFlag = 0
+            if (deleted) deletedFlag = 1
+            rqObjectBuffer = "O\t" rqVisited "\t" absoluteNumber "\t" rqEscape(objectIdentifier) "\t" rqEscape(objectNumber) "\t" numberStatus "\t" objectLevel "\t" parentNumber "\t" parentStatus "\t" deletedFlag "\n"
+            rqObjectCharacters = 0
+            rqFields(objectRef, deleted && di_arg_deleted == "MetadataOnly")
+            rqObjectBuffer += "E\n"
+            int recordLength = length(rqObjectBuffer)
+            // Four bytes per character is a conservative UTF-8 upper bound. Reserve room for metadata/footer.
+            if (recordLength > (rqMaxFile - rqEstimatedBytes) / 4) {
+                rqVisited--
+                rqTruncated = true
+                break
+            }
+            rqOutput << rqObjectBuffer
+            rqEstimatedBytes += recordLength * 4
+            rqWritten++
+        }
+        string rqEnumerationError = lastError()
+        if (!null rqEnumerationError) rqEnumerationFailed = true
+        rqUnavailable = rqVisited - rqWritten - rqDenied - rqDeletedExcluded
+    }
+    if (rqOwned) {
+        noError()
+        close(rqModule)
+        string rqCloseError = lastError()
+        if (null rqCloseError) rqCleanup = "Closed"
+        else rqCleanup = "Failed"
+    }
+    int truncatedFlag = 0, enumerationFlag = 0
+    if (rqTruncated) truncatedFlag = 1
+    if (rqEnumerationFailed) enumerationFlag = 1
+    noError()
+    rqOutput << "END\t" rqStatus "\t" rqWritten "\t" rqVisited "\t" rqDenied "\t" rqDeletedExcluded "\t" rqUnavailable "\t" truncatedFlag "\t" enumerationFlag "\t" rqCleanup "\n"
+    close(rqOutput)
+    string rqOutputError = lastError()
+    if (!null rqOutputError) di_error = "REQUIREMENT_OUTPUT_FAILED"
+}
+delete(rqObjectBuffer)

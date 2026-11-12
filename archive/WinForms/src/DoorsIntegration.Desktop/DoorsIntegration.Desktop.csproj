@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Processing\DoorsIntegration.Processing.csproj" />
+  </ItemGroup>
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Prefer32Bit>true</Prefer32Bit>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\doors-integration.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\doors-integration.ico" LogicalName="DoorsIntegration.Desktop.AppIcon.ico" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Com\DoorsIntegration.Com.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Dxl\DoorsIntegration.Dxl.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Export\DoorsIntegration.Export.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,69 @@
+// Documented BaselineSetDefinition/BaselineSet iterators. NO lock/read(bsd)/save/mutation.
+// Release/build, borrowed-definition dirty state and inspection compatibility are managed gates.
+string nsEscape(string v) {
+    if (null v) return ""
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(v); i++) {
+        char c = v[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string r = stringOf(b)
+    delete(b)
+    return r
+}
+Buffer nsRows = create
+nsRows = "NATIVE_BASELINE_SET_READ\t1\t" di_requestId "\n"
+string nsStatus = "NOT_RUN"
+int nsCount = 0
+noError()
+Item nsItem = item(di_arg_folder)
+if (!null nsItem && fullName(nsItem) == di_arg_folder && canRead(nsItem) && qualifiedUniqueID(nsItem) == di_arg_folderId &&
+    (type(nsItem) == "Folder" || type(nsItem) == "Project")) {
+    Folder nsFolder = folder(di_arg_folder)
+    if (!null nsFolder && getDatabaseIdentifier() == di_arg_database && doorsname() == di_arg_user &&
+        doorsVersion() == di_arg_clientVersion && intOf(session()) == intOf(di_arg_session)) {
+        nsStatus = "OK"
+        BaselineSetDefinition bsd
+        for bsd in nsFolder do {
+            nsCount++
+            if (nsCount > 10000 || length(nsRows) > 2000000) { nsStatus = "LIMIT"; break }
+            string dn = name(bsd)
+            nsRows += "D\t" nsEscape(dn) "\t" nsEscape(description(bsd)) "\n"
+            ModName_ mr
+            for mr in bsd do {
+                Item mi = item(fullName(mr))
+                if (null mi || !canRead(mi) || type(mi) != "Formal") { nsStatus = "INCOMPLETE"; break }
+                nsRows += "M\t" nsEscape(dn) "\t" nsEscape(qualifiedUniqueID(mi)) "\t" nsEscape(fullName(mi)) "\n"
+                nsCount++
+                if (nsCount > 10000 || length(nsRows) > 2000000) { nsStatus = "LIMIT"; break }
+            }
+            BaselineSet bs
+            for bs in bsd do {
+                nsCount++
+                if (nsCount > 10000 || length(nsRows) > 2000000) { nsStatus = "LIMIT"; break }
+                nsRows += "S\t" nsEscape(dn) "\t" major(bs) "\t" minor(bs) "\t" nsEscape(suffix(bs)) "\t" isOpen(bs) "\t" nsEscape(annotation(bs)) "\t" nsEscape(user(bs)) "\t" intOf(dateOf(bs)) "\n"
+                ModuleVersion mv
+                for mv in bs do {
+                    Item bi = item(fullName(mv))
+                    if (null bi || !canRead(bi) || !baselineExists(mv)) { nsStatus = "INCOMPLETE"; break }
+                    nsRows += "B\t" nsEscape(dn) "\t" major(bs) "\t" minor(bs) "\t" nsEscape(suffix(bs)) "\t" nsEscape(qualifiedUniqueID(bi)) "\t" nsEscape(fullName(bi)) "\t" nsEscape(versionString(mv)) "\n"
+                    nsCount++
+                    if (nsCount > 10000 || length(nsRows) > 2000000) { nsStatus = "LIMIT"; break }
+                }
+                if (nsStatus != "OK") break
+            }
+            if (nsStatus != "OK") break
+        }
+    }
+}
+string nsError = lastError()
+if (!null nsError) nsStatus = "ERROR"
+nsRows += "END\t" nsStatus "\n"
+oleSetResult(stringOf(nsRows))
+delete(nsRows)

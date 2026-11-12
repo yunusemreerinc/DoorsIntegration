@@ -1,0 +1,2 @@
+// Executor context provides string di_arg_message. No database access.
+oleSetResult(di_arg_message)

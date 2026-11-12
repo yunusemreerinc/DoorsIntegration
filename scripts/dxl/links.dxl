@@ -1,0 +1,320 @@
+// Read-only Classic links. No creation, editing, save, ACL changes or surrogate synchronization.
+// One exact link module. Only fully assembled records are written to the private UTF-8 file.
+// The executor supplies the configured watchdog pragma for this invocation.
+Stream lxOutput = null
+Module lxAnchor = null
+ModuleVersion lxAnchorVersion = null
+Module lxOwned[257]
+int lxOwnedCount = 0
+int lxLinkedOpened = 0
+int lxCleanupFailures = 0
+string lxModuleStatus = "DeniedOrNotFound"
+string lxLinkStatus = "DeniedOrNotFound"
+string lxOwnership = "NotLoaded"
+string lxOpenStatus = "ReadFailed"
+string lxEndpointStatus = "ReadFailed"
+Object lxEndpointObject = null
+string lxAttrStatus = "NotRequested"
+string lxAttrValue = ""
+int lxVisited = 0, lxDenied = 0, lxDeleted = 0, lxCount = 0, lxUnresolved = 0, lxGaps = 0
+int lxBytes = 49152
+int lxMaxObjects = intOf(di_arg_maxObjects)
+int lxMaxLinks = intOf(di_arg_maxLinks)
+int lxMaxModules = intOf(di_arg_maxModules)
+int lxMaxFile = intOf(di_arg_maxFile)
+bool lxTruncated = false, lxFailed = false, lxStop = false, lxObservedBaseline = false
+
+string lxEscape(string value) {
+    Buffer buffer = create
+    buffer = ""
+    int index
+    for (index = 0; index < length(value); index++) {
+        char c = value[index]
+        if (c == '\\') buffer += "\\\\"
+        else if (c == '\t') buffer += "\\t"
+        else if (c == '\r') buffer += "\\r"
+        else if (c == '\n') buffer += "\\n"
+        else buffer += c
+    }
+    string result = stringOf(buffer)
+    delete(buffer)
+    return result
+}
+
+// Caller owns one sequential noError/lastError block. Do not nest suppression blocks here.
+Module lxOpen(ModuleVersion version, bool anchor) {
+    lxOpenStatus = "DeniedOrNotFound"
+    if (null version) return null
+    ModName_ reference = module(version)
+    if (null reference) return null
+    if (isDeleted(reference)) { lxOpenStatus = "ModuleDeleted"; return null }
+    string path = fullName(version)
+    if (null path || path == "") return null
+    Item moduleItem = item(path)
+    if (null moduleItem) return null
+    if (!canRead(moduleItem)) { lxOpenStatus = "AccessDenied"; return null }
+    if (type(moduleItem) != "Formal") { lxOpenStatus = "ReadFailed"; return null }
+    if (isBaseline(version) && !baselineExists(version)) { lxOpenStatus = "DeniedOrNotFound"; return null }
+    Module loaded = data(version)
+    if (!null loaded) {
+        if (!isRead(loaded)) { lxOpenStatus = "AlreadyOpenForWrite"; return null }
+        if (anchor) lxOwnership = "BorrowedReadOnly"
+    } else {
+        if (di_arg_open != "1") { lxOpenStatus = "NotLoadedByPolicy"; return null }
+        if (!anchor && lxLinkedOpened >= lxMaxModules) { lxOpenStatus = "ModuleLimit"; return null }
+        loaded = load(version, false)
+        if (null loaded) return null
+        lxOwned[lxOwnedCount] = loaded
+        lxOwnedCount++
+        if (anchor) lxOwnership = "OwnedReadOnly"
+        else lxLinkedOpened++
+    }
+    if (!isRead(loaded) || fullName(loaded) != path || isBaseline(loaded) != isBaseline(version)) {
+        lxOpenStatus = "ReadFailed"; return null
+    }
+    if (!canRead(loaded)) { lxOpenStatus = "AccessDenied"; return null }
+    lxOpenStatus = "Resolved"
+    return loaded
+}
+
+void lxAttribute(Object objectRef, string attributeName) {
+    lxAttrValue = ""
+    lxAttrStatus = "DeniedOrNotFound"
+    AttrDef definition = find(module(objectRef), attributeName)
+    if (null definition) return
+    if (!definition.object) { lxAttrStatus = "NotObjectAttribute"; return }
+    if (!canRead(objectRef.attributeName)) { lxAttrStatus = "AccessDenied"; return }
+    bool generated = definition.dxl
+    if (generated) { lxAttrStatus = "DxlEvaluationDisabled"; return }
+    lxAttrValue = objectRef.attributeName ""
+    if (length(lxAttrValue) > 8192) { lxAttrValue = ""; lxAttrStatus = "TooLarge"; return }
+    lxAttrStatus = "Readable"
+}
+
+string lxEndpoint(ModuleVersion version, int absoluteNumber) {
+    string path = "", kind = "Unknown", versionName = "", identifierValue = "", absoluteValue = ""
+    string surrogate = "NotConfigured", external = "", referenceStatus = "NotRequested"
+    if (di_arg_marker != "") surrogate = "Unavailable"
+    if (absoluteNumber > 0) absoluteValue = absoluteNumber ""
+    lxEndpointObject = null
+    lxEndpointStatus = "DeniedOrNotFound"
+    if (!null version) {
+        path = fullName(version)
+        kind = "Current"
+        if (isBaseline(version)) { kind = "Baseline"; versionName = versionString(version) }
+        Module loaded = null
+        if (version == lxAnchorVersion) { loaded = lxAnchor; lxOpenStatus = "Resolved" }
+        else if (di_arg_resolve == "1") loaded = lxOpen(version, false)
+        else lxOpenStatus = "NotLoadedByPolicy"
+        lxEndpointStatus = lxOpenStatus
+        if (!null loaded) {
+            lxEndpointStatus = "UnresolvedObject"
+            if (absoluteNumber > 0) lxEndpointObject = object(absoluteNumber, loaded)
+            if (!null lxEndpointObject) {
+                if (!canRead(lxEndpointObject) || !canRead(lxEndpointObject."Absolute Number")) {
+                    lxEndpointObject = null; lxEndpointStatus = "AccessDenied"
+                } else {
+                    int observedAbsolute = lxEndpointObject."Absolute Number"
+                    if (observedAbsolute != absoluteNumber) { lxEndpointObject = null; lxEndpointStatus = "ReadFailed" }
+                    else {
+                        identifierValue = identifier(lxEndpointObject)
+                        lxEndpointStatus = "Resolved"
+                        if (isDeleted(lxEndpointObject)) lxEndpointStatus = "DeletedObject"
+                        if (di_arg_marker != "") {
+                            lxAttribute(lxEndpointObject, di_arg_marker)
+                            if (lxAttrStatus == "Readable") {
+                                surrogate = "NotMatched"
+                                if (lxAttrValue == di_arg_markerValue) {
+                                    surrogate = "Matched"
+                                    if (di_arg_reference != "") {
+                                        lxAttribute(lxEndpointObject, di_arg_reference)
+                                        external = lxAttrValue; referenceStatus = lxAttrStatus
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return lxEscape(path) "\t" kind "\t" lxEscape(versionName) "\t" absoluteValue "\t" lxEscape(identifierValue) "\t" lxEndpointStatus "\t" surrogate "\t" lxEscape(external) "\t" referenceStatus
+}
+
+void lxWrite(string direction, string recordKind, string status, bool echoed, string verification, string sourceData, string targetData) {
+    if (lxStop) return
+    if (lxCount >= lxMaxLinks) { lxTruncated = true; lxStop = true; return }
+    int echoFlag = 0
+    if (echoed) echoFlag = 1
+    Buffer record = create
+    record = "L\t" (lxCount + 1) "\t" direction "\t" recordKind "\t" status "\t" echoFlag "\t" verification "\t" lxEscape(di_arg_linkPath) "\t" sourceData "\t" targetData "\n"
+    int recordLength = length(record)
+    if (recordLength > (lxMaxFile - lxBytes) / 4) { lxTruncated = true; lxStop = true }
+    else {
+        lxOutput << record
+        lxBytes += recordLength * 4
+        lxCount++
+        if (recordKind == "IncomingSourceReference") lxGaps++
+        else if (status != "Resolved") lxUnresolved++
+    }
+    delete(record)
+}
+
+noError()
+lxOutput = write(di_outputPath, 65001)
+string lxOutputOpenError = lastError()
+if (null lxOutput || !null lxOutputOpenError) di_error = "LINK_OUTPUT_FAILED"
+else {
+    noError()
+    Item linkItem = item(di_arg_linkPath)
+    if (!null linkItem) {
+        if (type(linkItem) != "Link") lxLinkStatus = "NotLinkModule"
+        else if (isDeleted(linkItem)) lxLinkStatus = "ModuleDeleted"
+        else if (!canRead(linkItem)) lxLinkStatus = "AccessDenied"
+        else lxLinkStatus = "Available"
+    }
+    Item anchorItem = item(di_arg_path)
+    if (!null anchorItem) {
+        if (type(anchorItem) != "Formal") lxModuleStatus = "NotFormalModule"
+        else if (isDeleted(anchorItem)) lxModuleStatus = "ModuleDeleted"
+        else if (!canRead(anchorItem)) lxModuleStatus = "AccessDenied"
+        else if (lxLinkStatus != "Available") lxModuleStatus = "NotLoadedByPolicy"
+        else {
+            ModName_ anchorReference = module(di_arg_path)
+            if (!null anchorReference) {
+                if (di_arg_version == "Baseline") {
+                    string suffix = null
+                    if (di_arg_suffix != "") suffix = di_arg_suffix
+                    Baseline selected = baseline(intOf(di_arg_major), intOf(di_arg_minor), suffix)
+                    lxAnchorVersion = moduleVersion(anchorReference, selected)
+                    if (null lxAnchorVersion || !baselineExists(lxAnchorVersion)) lxModuleStatus = "BaselineUnavailable"
+                    else lxModuleStatus = "Available"
+                } else {
+                    lxAnchorVersion = moduleVersion(anchorReference)
+                    if (!null lxAnchorVersion) lxModuleStatus = "Available"
+                }
+                if (lxModuleStatus == "Available") {
+                    lxAnchor = lxOpen(lxAnchorVersion, true)
+                    if (null lxAnchor) {
+                        lxModuleStatus = lxOpenStatus
+                        if (lxModuleStatus == "Resolved" || lxModuleStatus == "ModuleLimit") lxModuleStatus = "ReadFailed"
+                    } else lxObservedBaseline = isBaseline(lxAnchor)
+                }
+            }
+        }
+    }
+    string lxLookupError = lastError()
+    if (!null lxLookupError) lxModuleStatus = "ReadFailed"
+    noError()
+    int baselineFlag = 0
+    if (lxObservedBaseline) baselineFlag = 1
+    lxOutput << "DOORS_LINKS\t1\t" di_requestId "\n"
+    lxOutput << "M\t" lxEscape(di_arg_path) "\t" lxEscape(di_arg_linkPath) "\t" di_arg_direction "\t" di_arg_version "\t" di_arg_major "\t" di_arg_minor "\t" lxEscape(di_arg_suffix) "\t" baselineFlag "\t" lxOwnership "\t" di_arg_deleted "\n"
+    string lxHeaderError = lastError()
+    if (!null lxHeaderError) di_error = "LINK_OUTPUT_FAILED"
+    if (lxModuleStatus == "Available" && lxLinkStatus == "Available" && di_error == "") {
+        noError()
+        Object anchorObject
+        for anchorObject in entire(lxAnchor) do {
+            if (lxStop) break
+            if (lxVisited >= lxMaxObjects) { lxTruncated = true; break }
+            lxVisited++
+            if (null anchorObject) { lxFailed = true; continue }
+            if (!canRead(anchorObject) || !canRead(anchorObject."Absolute Number")) { lxDenied++; continue }
+            if (isDeleted(anchorObject) && di_arg_deleted != "1") { lxDeleted++; continue }
+            int anchorAbsolute = anchorObject."Absolute Number"
+            if (anchorAbsolute <= 0) { lxFailed = true; continue }
+            string anchorData = lxEndpoint(lxAnchorVersion, anchorAbsolute)
+            string anchorStatus = lxEndpointStatus
+            if (di_arg_direction != "Incoming") {
+                Link outgoing
+                for outgoing in all (anchorObject -> di_arg_linkPath) do {
+                    if (lxStop) break
+                    ModuleVersion targetVersionRef = targetVersion(outgoing)
+                    int targetAbsolute = targetAbsNo(outgoing)
+                    string targetData = lxEndpoint(targetVersionRef, targetAbsolute)
+                    string status = "EndpointUnresolved"
+                    if (anchorStatus == "Resolved" && lxEndpointStatus == "Resolved") status = "Resolved"
+                    string verification = "FilterOnly"
+                    Module linkModule = module(outgoing)
+                    if (!null linkModule && fullName(linkModule) == di_arg_linkPath) verification = "Verified"
+                    else status = "ReadFailed"
+                    lxWrite("Outgoing", "Link", status, echo(outgoing), verification, anchorData, targetData)
+                    if (!null targetVersionRef) delete(targetVersionRef)
+                }
+            }
+            if (di_arg_direction != "Outgoing" && !lxStop) {
+                Skip seenSources = createString()
+                LinkRef incoming
+                for incoming in all (anchorObject <- di_arg_linkPath) do {
+                    if (lxStop) break
+                    ModuleVersion sourceVersionRef = sourceVersion(incoming)
+                    string sourcePath = ""
+                    if (!null sourceVersionRef) sourcePath = fullName(sourceVersionRef)
+                    put(seenSources, sourcePath, true)
+                    int sourceAbsolute = sourceAbsNo(incoming)
+                    string sourceData = lxEndpoint(sourceVersionRef, sourceAbsolute)
+                    string sourceStatus = lxEndpointStatus
+                    Object sourceObject = lxEndpointObject
+                    string status = "IncomingReferenceOnly"
+                    string verification = "FilterOnly"
+                    // Retain the reference even if the source is inaccessible or the corresponding outlink is absent.
+                    if (!null sourceObject) {
+                        Link candidate
+                        for candidate in all (sourceObject -> di_arg_linkPath) do {
+                            ModuleVersion candidateTarget = targetVersion(candidate)
+                            bool matches = candidateTarget == lxAnchorVersion && targetAbsNo(candidate) == anchorAbsolute
+                            if (!null candidateTarget) delete(candidateTarget)
+                            if (matches) {
+                                Module candidateModule = module(candidate)
+                                if (!null candidateModule && fullName(candidateModule) == di_arg_linkPath) {
+                                    verification = "Verified"
+                                    status = "EndpointUnresolved"
+                                    if (sourceStatus == "Resolved" && anchorStatus == "Resolved") status = "Resolved"
+                                }
+                                break
+                            }
+                        }
+                    }
+                    lxWrite("Incoming", "Link", status, echo(incoming), verification, sourceData, anchorData)
+                    if (!null sourceVersionRef) delete(sourceVersionRef)
+                }
+                // Some clients/permissions expose only source module references, not individual unloaded links.
+                // Do not invent a source object ID or load a guessed current version in this fallback.
+                ModName_ sourceReference
+                for sourceReference in each anchorObject <- di_arg_linkPath do {
+                    if (lxStop) break
+                    string sourcePath = ""
+                    if (!null sourceReference) sourcePath = fullName(sourceReference)
+                    if (!find(seenSources, sourcePath)) {
+                        put(seenSources, sourcePath, true)
+                        string surrogate = "NotConfigured"
+                        if (di_arg_marker != "") surrogate = "Unavailable"
+                        string sourceData = lxEscape(sourcePath) "\tUnknown\t\t\t\tUnresolvedObject\t" surrogate "\t\tNotRequested"
+                        lxWrite("Incoming", "IncomingSourceReference", "SourceReferenceOnly", false, "FilterOnly", sourceData, anchorData)
+                    }
+                }
+                delete(seenSources)
+            }
+        }
+        string lxEnumerationError = lastError()
+        if (!null lxEnumerationError) lxFailed = true
+    }
+    // Reverse creation order closes related formal modules before the anchor. Never close borrowed modules.
+    int ownedIndex
+    for (ownedIndex = lxOwnedCount - 1; ownedIndex >= 0; ownedIndex--) {
+        noError()
+        bool closed = close(lxOwned[ownedIndex], false)
+        string closeError = lastError()
+        if (!closed || !null closeError) lxCleanupFailures++
+    }
+    int truncatedFlag = 0, failedFlag = 0
+    if (lxTruncated) truncatedFlag = 1
+    if (lxFailed) failedFlag = 1
+    noError()
+    lxOutput << "END\t" lxModuleStatus "\t" lxLinkStatus "\t" lxCount "\t" lxVisited "\t" lxDenied "\t" lxDeleted "\t" lxUnresolved "\t" lxGaps "\t" truncatedFlag "\t" failedFlag "\t" lxOwnedCount "\t" lxCleanupFailures "\n"
+    close(lxOutput)
+    if (!null lxAnchorVersion) delete(lxAnchorVersion)
+    string lxOutputError = lastError()
+    if (!null lxOutputError) di_error = "LINK_OUTPUT_FAILED"
+}

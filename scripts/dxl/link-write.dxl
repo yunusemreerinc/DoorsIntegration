@@ -1,0 +1,332 @@
+// Classic DOORS only. Existing link module AND existing current-source linkset required.
+// preview is read-only; commit owns closed modules, exclusive source/link module, read-only target.
+// Never create a linkset/module, change descriptors/ACLs, unlock, retry or discard dirty modules.
+// Native API references and supported trace scope: docs/LINK-WRITING.md.
+Module lwSource = null, lwTarget = null, lwLinkModule = null, lwPrevious = current Module
+ModuleVersion lwSourceVersion = null, lwTargetVersion = null
+Object lwSourceObject = null, lwTargetObject = null, lwLinksetObject = null
+Link lwSelectedLink = null
+bool lwReady = true, lwAttempted = false, lwVerified = false
+bool lwOwnSource = false, lwOwnTarget = false, lwOwnLink = false
+string lwDatabase = "", lwUser = "", lwSourceId = "", lwTargetId = "", lwLinkId = ""
+string lwSourceIdentifier = "", lwTargetIdentifier = ""
+string lwOutcome = "Preview", lwPersistence = "NotAttempted", lwCleanup = "NotLoaded"
+int lwSourceAbs = intOf(di_arg_sourceAbs), lwTargetAbs = intOf(di_arg_targetAbs)
+int lwMaxLinks = intOf(di_arg_maxLinks), lwMatches = 0, lwTraceCount = 0
+Buffer lwIssues = create, lwState = create, lwBeforeRows = create, lwAfterRows = create
+lwIssues = ""; lwState = ""; lwBeforeRows = ""; lwAfterRows = ""
+Skip lwEdges = createString()
+
+string lwEscape(string value) {
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(value); i++) {
+        char c = value[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+void lwIssue(string code) {
+    lwReady = false
+    if (length(lwIssues) < 2048) lwIssues += "I\t" code "\n"
+}
+void lwStateField(string value) {
+    if (length(value) > 30000 || length(lwState) + length(value) + 16 > 32768) { lwIssue("LimitExceeded"); return }
+    lwState += (length(value) "") ":" value
+}
+// Canonical, sorted multiset. Counts preserve duplicate references rather than hiding them.
+string lwRows(string tag) {
+    Buffer b = create
+    b = ""
+    int count, i
+    for count in lwEdges do {
+        string fields = (string key lwEdges)
+        for (i = 0; i < count; i++) b += tag fields "\n"
+    }
+    string result = stringOf(b)
+    delete(b)
+    return result
+}
+string lwTargetFields() {
+    return lwEscape(di_arg_targetPath) "\t" lwEscape(lwTargetId) "\tCurrent\t\t" (lwTargetAbs "")
+}
+void lwChangeCount(string fields, int delta) {
+    int count = 0
+    bool found = find(lwEdges, fields, count)
+    if (found) delete(lwEdges, fields)
+    count += delta
+    if (count < 0) { lwIssue("ReadbackMismatch"); return }
+    if (count > 0) put(lwEdges, fields, count)
+}
+// Metadata identities for ALL outgoing links from this object via exactly the selected module,
+// including baseline versions. Does not silently resolve unknown references as current versions.
+void lwCapture() {
+    delete(lwEdges)
+    lwEdges = createString()
+    lwMatches = 0; lwSelectedLink = null
+    int count = 0, bytes = 0
+    lwTraceCount = 0
+    Link edge
+    for edge in all (lwSourceObject -> di_arg_linkPath) do {
+        count++
+        if (count > lwMaxLinks) { lwIssue("LimitExceeded"); break }
+        Module lm = module(edge)
+        ModuleVersion tv = targetVersion(edge)
+        if (null lm || null tv) {
+            if (!null tv) delete(tv)
+            lwIssue("TraceabilityIncomplete"); break
+        }
+        if (fullName(lm) != di_arg_linkPath || qualifiedUniqueID(lm) != lwLinkId) {
+            delete(tv); lwIssue("TraceabilityIncomplete"); break
+        }
+        ModName_ tr = module(tv)
+        string path = fullName(tv), kind = "Current", ver = ""
+        int absolute = targetAbsNo(edge)
+        Item ti = item(path)
+        if (null tr || null ti || absolute <= 0) { delete(tv); lwIssue("TraceabilityIncomplete"); break }
+        if (isDeleted(tr) || isDeleted(ti) || !canRead(ti) || type(ti) != "Formal") {
+            delete(tv); lwIssue("TraceabilityIncomplete"); break
+        }
+        if (isBaseline(tv)) {
+            if (!baselineExists(tv)) { delete(tv); lwIssue("TraceabilityIncomplete"); break }
+            kind = "Baseline"; ver = versionString(tv)
+        }
+        string targetId = qualifiedUniqueID(ti)
+        string fields = lwEscape(path) "\t" lwEscape(targetId) "\t" kind "\t" lwEscape(ver) "\t" (absolute "")
+        bytes += length(fields) + 1
+        if (bytes > 30000 || targetId == "") { delete(tv); lwIssue("LimitExceeded"); break }
+        lwChangeCount(fields, 1)
+        lwTraceCount++
+        if (tv == lwTargetVersion && targetId == lwTargetId && absolute == lwTargetAbs) {
+            lwMatches++; lwSelectedLink = edge
+        }
+        delete(tv)
+    }
+}
+Object lwFind(Module m, int absolute) {
+    Object o = object(absolute, m)
+    if (null o) { lwIssue("ObjectUnavailable"); return null }
+    if (!canRead(o) || isDeleted(o) || !canRead(o."Absolute Number")) { lwIssue("ObjectUnavailable"); return null }
+    int observed = o."Absolute Number"
+    if (observed != absolute || table(o) || row(o) || cell(o)) { lwIssue("ObjectUnavailable"); return null }
+    return o
+}
+// No creation: enumerate the existing link-module objects and match current source version/target ID.
+void lwFindLinkset() {
+    int visited = 0, matches = 0
+    Object o
+    for o in entire(lwLinkModule) do {
+        visited++
+        if (visited > 100000) { lwIssue("LimitExceeded"); break }
+        if (!canRead(o)) { lwIssue("PermissionDenied"); break }
+        if (isDeleted(o)) continue
+        Linkset ls = linkset(o)
+        ModuleVersion sv = getSourceVersion(ls)
+        ModName_ tr = getTarget(ls)
+        if (!null sv && !null tr) {
+            if (sv == lwSourceVersion && fullName(tr) == di_arg_targetPath) {
+                Item ti = item(fullName(tr))
+                if (!null ti && qualifiedUniqueID(ti) == lwTargetId) { matches++; lwLinksetObject = o }
+            }
+        }
+        if (!null sv) delete(sv)
+    }
+    if (matches == 0) lwIssue("LinksetMissing")
+    else if (matches != 1) lwIssue("LinksetAmbiguous")
+}
+bool lwCloseClean(Module m) {
+    if (null m) return true
+    if (unsaved(m)) return false
+    return close(m, false)
+}
+
+bool lwCommit = di_arg_mode == "commit"
+if (lwCommit) lwOutcome = "Blocked"
+if ((di_arg_mode != "preview" && !lwCommit) || (di_arg_action != "Create" && di_arg_action != "Remove") ||
+    lwSourceAbs <= 0 || lwTargetAbs <= 0 || lwMaxLinks < 1 || lwMaxLinks > 2048 ||
+    (lwCommit && (length(di_arg_approvedPlan) != 32 || di_arg_expectedState == ""))) lwIssue("ContextChanged")
+noError()
+lwDatabase = getDatabaseIdentifier(); lwUser = doorsname()
+Item lwSi = item(di_arg_sourcePath), lwTi = item(di_arg_targetPath), lwLi = item(di_arg_linkPath)
+if (null lwSi || null lwTi || null lwLi) lwIssue("ModuleUnavailable")
+else if (isDeleted(lwSi) || isDeleted(lwTi) || isDeleted(lwLi) || !canRead(lwSi) || !canRead(lwTi) || !canRead(lwLi)) lwIssue("ModuleUnavailable")
+else if (type(lwSi) != "Formal" || type(lwTi) != "Formal") lwIssue("NotFormalModule")
+else if (type(lwLi) != "Link") lwIssue("NotLinkModule")
+else if (!canModify(lwSi) || !canModify(lwLi)) lwIssue("PermissionDenied")
+else if (lwReady) {
+    lwSourceId = qualifiedUniqueID(lwSi); lwTargetId = qualifiedUniqueID(lwTi); lwLinkId = qualifiedUniqueID(lwLi)
+    ModName_ sr = module(di_arg_sourcePath), tr = module(di_arg_targetPath), lr = module(di_arg_linkPath)
+    lwSourceVersion = moduleVersion(sr); lwTargetVersion = moduleVersion(tr)
+    if (open(sr) || open(tr) || open(lr)) lwIssue("AlreadyOpen")
+    else if (isLocked(sr) || isLocked(tr) || isLocked(lr)) lwIssue("Locked")
+    else {
+        if (lwCommit) lwLinkModule = edit(di_arg_linkPath, false, true, true)
+        else lwLinkModule = read(di_arg_linkPath, false)
+        if (!null lwLinkModule) lwOwnLink = true
+        if (lwCommit) lwSource = edit(di_arg_sourcePath, false, true, true)
+        else lwSource = load(lwSourceVersion, false)
+        if (!null lwSource) lwOwnSource = true
+        if (di_arg_sourcePath == di_arg_targetPath) lwTarget = lwSource
+        else { lwTarget = load(lwTargetVersion, false); if (!null lwTarget) lwOwnTarget = true }
+        if (null lwSource || null lwTarget || null lwLinkModule) lwIssue("ModuleUnavailable")
+        else if (isBaseline(lwSource) || isBaseline(lwTarget) || isBaseline(lwLinkModule)) lwIssue("BaselineNotWritable")
+        else if (qualifiedUniqueID(lwSource) != lwSourceId || qualifiedUniqueID(lwTarget) != lwTargetId || qualifiedUniqueID(lwLinkModule) != lwLinkId ||
+            fullName(lwSource) != di_arg_sourcePath || fullName(lwTarget) != di_arg_targetPath || fullName(lwLinkModule) != di_arg_linkPath) lwIssue("ContextChanged")
+        else if (unsaved(lwSource) || unsaved(lwTarget) || unsaved(lwLinkModule)) lwIssue("ContextChanged")
+        else if ((lwCommit && (!isEdit(lwSource) || !isEdit(lwLinkModule))) ||
+            (!lwCommit && (!isRead(lwSource) || !isRead(lwLinkModule))) || (lwOwnTarget && !isRead(lwTarget))) lwIssue("AlreadyOpen")
+        else {
+            current = lwSource
+            lwSourceObject = lwFind(lwSource, lwSourceAbs); lwTargetObject = lwFind(lwTarget, lwTargetAbs)
+            lwFindLinkset()
+            if (lwReady) {
+                lwSourceIdentifier = identifier(lwSourceObject); lwTargetIdentifier = identifier(lwTargetObject)
+                if (lwCommit && (!canModify(lwSource) || !canWrite(lwSource) || !canModify(lwSourceObject) ||
+                    !canModify(lwLinkModule) || !canWrite(lwLinkModule) || !canModify(lwLinksetObject))) lwIssue("PermissionDenied")
+                lwCapture()
+                lwBeforeRows = lwRows("B\t")
+                if (di_arg_action == "Create" && lwMatches != 0) lwIssue("DuplicateLink")
+                if (di_arg_action == "Create" && (lwTraceCount >= lwMaxLinks || length(lwBeforeRows) > 29500)) lwIssue("LimitExceeded")
+                if (di_arg_action == "Remove" && lwMatches == 0) lwIssue("LinkMissing")
+                if (di_arg_action == "Remove" && lwMatches > 1) lwIssue("AmbiguousLink")
+                if (lwCommit && di_arg_action == "Remove" && lwMatches == 1 && !canDelete(lwSelectedLink)) lwIssue("PermissionDenied")
+                lwStateField(lwDatabase); lwStateField(lwUser); lwStateField(lwSourceId); lwStateField(lwTargetId); lwStateField(lwLinkId)
+                lwStateField(lwSourceIdentifier); lwStateField(lwTargetIdentifier)
+                int setAbsolute = lwLinksetObject."Absolute Number"
+                lwStateField(setAbsolute ""); lwStateField(lwRows(""))
+            }
+        }
+    }
+}
+string lwInspectError = lastError()
+if (!null lwInspectError) lwIssue("NativeFailure")
+if (lwDatabase == "" || lwUser == "" || lwSourceId == "" || lwTargetId == "" || lwLinkId == "") lwIssue("ModuleUnavailable")
+if (lwSourceIdentifier == "" || lwTargetIdentifier == "") { if (lwReady) lwIssue("ObjectUnavailable") }
+
+if (lwCommit && lwReady) {
+    if (stringOf(lwState) != di_arg_expectedState) { lwOutcome = "ContextChanged"; lwIssue("ContextChanged") }
+    else {
+        lwOutcome = "PartialFailure"
+        if (di_arg_action == "Create") lwChangeCount(lwTargetFields(), 1)
+        else lwChangeCount(lwTargetFields(), -1)
+        string lwExpectedRows = lwRows("")
+        lwAttempted = true
+        noError()
+        if (di_arg_action == "Create") lwSourceObject -> di_arg_linkPath -> lwTargetObject
+        else {
+            // Flush only after enumeration is complete; never flush inside a link iterator.
+            delete(lwSelectedLink)
+            flushDeletions()
+        }
+        string lwMutationError = lastError()
+        if (!null lwMutationError) lwIssue("NativeFailure")
+        if (lwReady) {
+            noError()
+            lwCapture()
+            string lwReadbackError = lastError()
+            if (!null lwReadbackError) lwIssue("NativeFailure")
+            if (lwReady && lwRows("") != lwExpectedRows) lwIssue("ReadbackMismatch")
+            if (lwReady) {
+                lwAfterRows = lwRows("A\t"); lwVerified = true
+                // Existing linkset must remain clean. Do not save any unexpected link-module changes.
+                if (unsaved(lwLinkModule)) lwIssue("ReadbackMismatch")
+            }
+        }
+        if (lwReady) {
+            lwPersistence = "Unknown"
+            noError()
+            save(lwSource)
+            string lwSaveError = lastError()
+            if (!null lwSaveError || unsaved(lwSource)) lwIssue("NativeFailure")
+            else {
+                lwPersistence = "Saved"
+                noError()
+                bool closed = lwCloseClean(lwSource)
+                string lwCloseError = lastError()
+                if (!closed || !null lwCloseError) lwIssue("CleanupFailed")
+                else {
+                    lwSource = null; lwSourceObject = null
+                    if (!lwOwnTarget) { lwTarget = null; lwTargetObject = null }
+                    lwVerified = false; lwAfterRows = ""
+                    noError()
+                    // Refresh the target after save, rather than trusting a stale read-only object handle.
+                    if (lwOwnTarget && !null lwTarget) {
+                        bool targetClosed = lwCloseClean(lwTarget)
+                        if (!targetClosed) lwIssue("CleanupFailed")
+                        else { lwTarget = null; lwTargetObject = null }
+                    }
+                    lwSource = load(lwSourceVersion, false)
+                    if (null lwSource) lwIssue("ModuleUnavailable")
+                    else if (!isRead(lwSource) || isBaseline(lwSource) || qualifiedUniqueID(lwSource) != lwSourceId) lwIssue("ContextChanged")
+                    else {
+                        lwSourceObject = lwFind(lwSource, lwSourceAbs)
+                        if (lwReady && identifier(lwSourceObject) != lwSourceIdentifier) lwIssue("ContextChanged")
+                        if (lwReady) {
+                            if (!lwOwnTarget) lwTarget = lwSource
+                            else lwTarget = load(lwTargetVersion, false)
+                            if (null lwTarget) lwIssue("ObjectUnavailable")
+                            else if (!isRead(lwTarget) || isBaseline(lwTarget) || qualifiedUniqueID(lwTarget) != lwTargetId) lwIssue("ContextChanged")
+                            else {
+                                lwTargetObject = lwFind(lwTarget, lwTargetAbs)
+                                if (lwReady && identifier(lwTargetObject) != lwTargetIdentifier) lwIssue("ContextChanged")
+                            }
+                        }
+                        if (lwReady) {
+                            lwCapture()
+                            if (lwReady && lwRows("") != lwExpectedRows) lwIssue("ReadbackMismatch")
+                            if (lwReady) { lwAfterRows = lwRows("A\t"); lwVerified = true; lwOutcome = "Applied" }
+                        }
+                    }
+                    string lwReloadError = lastError()
+                    if (!null lwReloadError) lwIssue("NativeFailure")
+                }
+            }
+        }
+    }
+}
+
+// Never discard or close a dirty module. Retain owned edit handles after a partial mutation for review.
+bool lwLeftOpen = false, lwCloseFailed = false
+noError()
+if (lwOwnSource && !null lwSource) {
+    if (unsaved(lwSource) || (lwAttempted && lwOutcome != "Applied" && !isRead(lwSource))) lwLeftOpen = true
+    else if (!lwCloseClean(lwSource)) lwCloseFailed = true
+}
+if (lwOwnTarget && !null lwTarget) { if (!lwCloseClean(lwTarget)) lwCloseFailed = true }
+if (lwOwnLink && !null lwLinkModule) {
+    if (unsaved(lwLinkModule)) lwLeftOpen = true
+    else if (!lwLeftOpen) {
+        unload(lwLinkModule)
+        if (!lwCloseClean(lwLinkModule)) lwCloseFailed = true
+    }
+}
+string lwCleanupError = lastError()
+if (!null lwCleanupError) lwCloseFailed = true
+if (lwOwnSource || lwOwnTarget || lwOwnLink) lwCleanup = "Closed"
+if (lwLeftOpen) lwCleanup = "LeftOpenForReview"
+if (lwCloseFailed) { lwCleanup = "Failed"; lwIssue("CleanupFailed") }
+if (lwOutcome == "Applied" && (!lwReady || lwCleanup != "Closed")) lwOutcome = "OutcomeUnknown"
+if (lwPersistence == "Unknown") lwOutcome = "OutcomeUnknown"
+if (!null lwPrevious) { noError(); current = lwPrevious; string lwRestoreError = lastError() }
+
+Buffer lwReply = create
+lwReply = "DOORS_LINK_WRITE|1|" di_requestId "\nR\t" di_arg_mode "\t" di_arg_action "\t" lwEscape(di_arg_sourcePath) "\t" di_arg_sourceAbs "\t" //-
+    lwEscape(di_arg_targetPath) "\t" di_arg_targetAbs "\t" lwEscape(di_arg_linkPath) "\t" di_arg_approvedPlan "\nM\t" //-
+    lwEscape(lwDatabase) "\t" lwEscape(lwUser) "\t" lwEscape(lwSourceId) "\t" lwEscape(lwTargetId) "\t" lwEscape(lwLinkId) "\t" //-
+    lwEscape(lwSourceIdentifier) "\t" lwEscape(lwTargetIdentifier) "\t" lwEscape(stringOf(lwState)) "\t" lwOutcome "\t" lwPersistence "\t" lwCleanup "\t"
+if (lwVerified) lwReply += "1"
+else lwReply += "0"
+lwReply += "\tSelectedSourceObjectOutgoing\n" stringOf(lwBeforeRows)
+if (lwVerified) lwReply += stringOf(lwAfterRows)
+lwReply += stringOf(lwIssues) "END\n"
+oleSetResult(stringOf(lwReply))
+delete(lwReply); delete(lwIssues); delete(lwState); delete(lwBeforeRows); delete(lwAfterRows); delete(lwEdges)
+if (!null lwSourceVersion) delete(lwSourceVersion)
+if (!null lwTargetVersion) delete(lwTargetVersion)

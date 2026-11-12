@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\tests\DoorsIntegration.AcceptanceHost\DoorsIntegration.AcceptanceHost.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Wpf\DoorsIntegration.Wpf.csproj" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="UIAutomationProvider" />
+    <Reference Include="UIAutomationTypes" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Processing\DoorsIntegration.Processing.csproj" />
+  </ItemGroup>
+  <PropertyGroup>
+    <!-- Preserve existing InternalsVisibleTo without widening production assemblies. -->
+    <AssemblyName>DoorsIntegration.Tests</AssemblyName>
+    <IsPackable>false</IsPackable><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="..\..\..\..\tests\dxl\verify-created-module.dxl" Link="scripts\dxl\verify-created-module.dxl" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Com\DoorsIntegration.Com.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Dxl\DoorsIntegration.Dxl.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Export\DoorsIntegration.Export.csproj" />
+    <ProjectReference Include="..\..\..\..\src\DoorsIntegration.Console\DoorsIntegration.Console.csproj" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Desktop\DoorsIntegration.Desktop.csproj" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
+  </ItemGroup>
+<ItemGroup><Compile Include="Snapshots\*.cs" /><Compile Include="..\..\..\..\tests\DoorsIntegration.Tests\*.cs" Exclude="../../../../tests/DoorsIntegration.Tests/BulkBaselineReportingTests.cs;../../../../tests/DoorsIntegration.Tests/BulkBaselineTests.cs;../../../../tests/DoorsIntegration.Tests/DesktopTests.cs;../../../../tests/DoorsIntegration.Tests/DesktopWorkspaceTestDoubles.cs;../../../../tests/DoorsIntegration.Tests/DesktopWorkspaceTests.cs;../../../../tests/DoorsIntegration.Tests/DiagnosticCommandTests.cs;../../../../tests/DoorsIntegration.Tests/DiscoveryDesktopTests.cs;../../../../tests/DoorsIntegration.Tests/DxlRunLimitAutomationTests.cs;../../../../tests/DoorsIntegration.Tests/ExecutionTimeoutTests.cs;../../../../tests/DoorsIntegration.Tests/LinkWriteDesktopTests.cs;../../../../tests/DoorsIntegration.Tests/LinkWriteTests.cs;../../../../tests/DoorsIntegration.Tests/ProcessingDesktopTests.cs;../../../../tests/DoorsIntegration.Tests/ProcessingDoorsAdapterTests.cs;../../../../tests/DoorsIntegration.Tests/RequirementWriteTests.cs;../../../../tests/DoorsIntegration.Tests/TraceabilityGraphTests.cs;../../../../tests/DoorsIntegration.Tests/WatchdogSettingsTests.cs" Link="Shared\%(Filename)%(Extension)" /></ItemGroup></Project>

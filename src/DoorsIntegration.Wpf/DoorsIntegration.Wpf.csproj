@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <Prefer32Bit>true</Prefer32Bit>
+    <ApplicationIcon>Assets\doors-integration.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DoorsIntegration.Application\DoorsIntegration.Application.csproj" />
+    <None Update="DoorsIntegration.cmd" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Com\DoorsIntegration.Com.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Dxl\DoorsIntegration.Dxl.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Export\DoorsIntegration.Export.csproj" />
+    <ProjectReference Include="..\DoorsIntegration.Processing\DoorsIntegration.Processing.csproj" />
+  </ItemGroup>
+</Project>

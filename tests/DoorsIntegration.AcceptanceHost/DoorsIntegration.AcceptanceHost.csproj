@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>false</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
+    <ProjectReference Include="..\..\src\DoorsIntegration.Wpf\DoorsIntegration.Wpf.csproj" />
+  </ItemGroup>
+</Project>

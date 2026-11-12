@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
+    <Reference Include="WindowsBase" />
+    <ProjectReference Include="..\DoorsIntegration.Core\DoorsIntegration.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Review aids only. Map fields and references to your approved project plans.
+     These checks do not implement all DO-178C objectives or establish compliance. -->
+<qualityProfile id="example-do178c-review-aids" revision="1" exampleOnly="true">
+  <rule id="ORG-178-CONTENT" revision="1" severity="Error" kind="RequiredAny" standardContext="DO-178C" projectReference="EXAMPLE-ORG-CHECKLIST">
+    <field>Object Heading</field><field>Object Text</field>
+  </rule>
+  <rule id="ORG-178-AMBIGUITY" revision="1" severity="Warning" kind="PatternAbsent" pattern="\b(TBD|TBC|should|appropriate|etc)\b" standardContext="DO-178C" projectReference="EXAMPLE-ORG-CHECKLIST">
+    <field>Object Text</field>
+  </rule>
+  <rule id="ORG-178-EVIDENCE" revision="1" severity="Warning" kind="RequiredAll" standardContext="DO-178C" projectReference="EXAMPLE-ORG-CHECKLIST">
+    <field>Source Reference</field><field>Verification Method</field><field>Review Evidence</field>
+  </rule>
+</qualityProfile>

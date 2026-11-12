@@ -1,0 +1,26 @@
+{
+  "Id": "project-reviewed-impact-example",
+  "MaximumDepth": 8,
+  "MaximumNodes": 100000,
+  "MaximumPaths": 20000,
+  "MaximumPathsPerRequirement": 3,
+  "TimeoutSeconds": 120,
+  "MaximumRequirements": 100000,
+  "MaximumLinks": 250000,
+  "MaximumSnapshotCharacters": 67108864,
+  "CustomAttributes": ["Requirement Type", "Verification Method", "Status", "Safety Level", "Priority"],
+  "TypeAttribute": "Requirement Type",
+  "StatusAttribute": "Status",
+  "VerificationAttribute": "Verification Method",
+  "CriticalityAttribute": "Safety Level",
+  "TestTypeAttribute": "Requirement Type",
+  "TestTypeValues": ["TEST", "Test Case"],
+  "TestTypes": ["TEST", "Test Case"],
+  "RequiredTestForTypes": ["SYS", "HLR", "LLR"],
+  "AttributeKinds": {"Priority": 1},
+  "AttributeSeverities": {"Safety Level": 0, "Object Text": 1, "Verification Method": 1, "Status": 2, "Object Heading": 3},
+  "CycleBehavior": 1,
+  "PropagationRules": [
+    {"SourceType": "*", "TargetType": "*", "LinkModuleIdentity": "*", "LinkType": "*", "Direction": 1}
+  ]
+}

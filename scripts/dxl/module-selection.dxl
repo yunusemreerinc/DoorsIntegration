@@ -1,0 +1,88 @@
+// Read-only identity and latest EXISTING baseline metadata. No edit/save/create/ACL changes.
+// Sequential noError blocks; borrowed modules are never closed or changed.
+string msEscape(string value) {
+    Buffer escaped = create
+    escaped = ""
+    int index
+    for (index = 0; index < length(value); index++) {
+        char c = value[index]
+        if (c == '\\') escaped += "\\\\"
+        else if (c == '\t') escaped += "\\t"
+        else if (c == '\r') escaped += "\\r"
+        else if (c == '\n') escaped += "\\n"
+        else escaped += c
+    }
+    string result = stringOf(escaped)
+    delete(escaped)
+    return result
+}
+Module msModule = null
+bool msOwned = false
+string msId = ""
+string msAccess = "Unavailable"
+string msBaselineStatus = "Unavailable"
+int msMajor = 0
+int msMinor = 0
+string msSuffix = ""
+string msAnnotation = ""
+string msCleanup = "NotOwned"
+noError()
+Item msItem = item(di_arg_path)
+if (!null msItem && type(msItem) == "Formal" && !isDeleted(msItem)) {
+    if (!canRead(msItem)) msAccess = "AccessDenied"
+    else if (fullName(msItem) == di_arg_path) {
+        msId = qualifiedUniqueID(msItem)
+        ModName_ msRef = module(di_arg_path)
+        if (!null msRef) {
+            ModuleVersion msVersion = moduleVersion(msRef)
+            if (!null msVersion) {
+                msModule = data(msVersion)
+                if (null msModule) {
+                    msModule = load(msVersion, false)
+                    if (!null msModule) msOwned = true
+                }
+                if (!null msModule && isRead(msModule) && !isBaseline(msModule) && canRead(msModule) &&
+                    fullName(msModule) == di_arg_path && qualifiedUniqueID(msModule) == msId && msId != "") {
+                    msAccess = "Readable"
+                    Baseline msLatest = getMostRecentBaseline(msModule, false)
+                    if (null msLatest) msBaselineStatus = "None"
+                    else if (baselineExists(moduleVersion(msRef, msLatest))) {
+                        msMajor = major(msLatest)
+                        msMinor = minor(msLatest)
+                        msSuffix = suffix(msLatest)
+                        if (null msSuffix) msSuffix = ""
+                        Baseline msB
+                        int msCount = 0
+                        for msB in msModule do {
+                            msCount++
+                            if (msCount > 10000) { msBaselineStatus = "Unavailable"; break }
+                            string msBSuffix = suffix(msB)
+                            if (null msBSuffix) msBSuffix = ""
+                            if (major(msB) == msMajor && minor(msB) == msMinor && msBSuffix == msSuffix) {
+                                msAnnotation = annotation(msB)
+                                if (null msAnnotation) msAnnotation = ""
+                                if (length(msAnnotation) <= 16384) msBaselineStatus = "Available"
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+string msReadError = lastError()
+if (!null msReadError) { msAccess = "Unavailable"; msBaselineStatus = "Unavailable" }
+if (msOwned && !null msModule) {
+    noError()
+    bool msClosed = close(msModule)
+    string msCloseError = lastError()
+    if (!msClosed || !null msCloseError) { msCleanup = "Failed"; msAccess = "Unavailable"; msBaselineStatus = "Unavailable" }
+    else msCleanup = "Closed"
+}
+if (msBaselineStatus != "Available") { msMajor = 0; msMinor = 0; msSuffix = ""; msAnnotation = "" }
+Buffer msOutput = create
+msOutput = "MODULE_SELECTION|1|" di_requestId "\n"
+msOutput += "M\t" msEscape(di_arg_path) "\t" msEscape(msId) "\t" msAccess "\t" msBaselineStatus "\t" msMajor "\t" msMinor "\t" msEscape(msSuffix) "\t" msEscape(msAnnotation) "\t" msCleanup "\nEND\n"
+oleSetResult(stringOf(msOutput))
+delete(msOutput)

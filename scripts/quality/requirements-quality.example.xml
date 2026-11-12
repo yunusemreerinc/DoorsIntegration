@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Example organization checks; this is not a standards objective catalogue. -->
+<qualityProfile id="example-requirement-review" revision="1" exampleOnly="true">
+  <rule id="ORG-CONTENT" revision="1" severity="Error" kind="RequiredAny" projectReference="EXAMPLE-ORG-CHECKLIST">
+    <field>Object Heading</field><field>Object Text</field>
+  </rule>
+  <rule id="ORG-AMBIGUITY" revision="1" severity="Warning" kind="PatternAbsent" pattern="\b(TBD|TBC|should|appropriate|etc)\b" projectReference="EXAMPLE-ORG-CHECKLIST">
+    <field>Object Text</field>
+  </rule>
+</qualityProfile>

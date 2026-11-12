@@ -1,0 +1,144 @@
+// Native SET operations; NEVER independent create(Module,Baseline,string).
+// Disabled unless reviewed release/script/context and validated state/link dispatch evidence are supplied.
+// Definition locks are acquired/released only by this context. No module save/discard/unlock/delete/rollback.
+string nswEscape(string v) {
+    if (null v) return ""
+    Buffer b = create
+    b = ""
+    int i
+    for (i = 0; i < length(v); i++) {
+        char c = v[i]
+        if (c == '\\') b += "\\\\"
+        else if (c == '\t') b += "\\t"
+        else if (c == '\r') b += "\\r"
+        else if (c == '\n') b += "\\n"
+        else b += c
+    }
+    string r = stringOf(b)
+    delete(b)
+    return r
+}
+string outcome = "Blocked", reason = "ApprovalOrEnvironmentNotValidated", err = null
+string resultName = "", resultMajor = "", resultMinor = "", resultSuffix = ""
+BaselineSetDefinition bsd = null
+BaselineSet bs = null
+bool owned = false, attempted = false
+Skip moduleList = create
+bool ready = di_arg_guard == "ValidatedStateAndLinkEvidence" && length(di_arg_approval) == 32 &&
+    getDatabaseIdentifier() == di_arg_database && doorsname() == di_arg_user && doorsVersion() == di_arg_clientVersion &&
+    intOf(session()) == intOf(di_arg_session) && intOf(today()) < intOf(di_arg_expires)
+noError()
+Item parentItem = item(di_arg_folder)
+if (ready) ready = !null parentItem
+if (ready) ready = fullName(parentItem) == di_arg_folder && qualifiedUniqueID(parentItem) == di_arg_folderId && canRead(parentItem) && (type(parentItem) == "Project" || type(parentItem) == "Folder")
+Folder parentFolder = null
+if (ready) parentFolder = folder(di_arg_folder)
+if (null parentFolder) ready = false
+if (ready) {
+    BaselineSetDefinition candidate
+    for candidate in parentFolder do {
+        if (name(candidate) == di_arg_definitionName) bsd = candidate
+        if (di_arg_action == "CreateDefinition" && name(candidate) == di_arg_name) ready = false
+    }
+    if (di_arg_action != "CreateDefinition" && null bsd) ready = false
+}
+// Input is a validated path TAB stable-id NEWLINE manifest. Paths/IDs cannot contain controls.
+int p = 0, count = 0
+string path = "", identity = ""
+bool readingId = false
+while (ready && p < length(di_arg_modules)) {
+    char c = di_arg_modules[p]
+    p++
+    if (c == '\t' && !readingId) readingId = true
+    else if (c == '\n') {
+        Item mi = item(path)
+        if (null mi) ready = false
+        else if (type(mi) != "Formal" || !canRead(mi) || qualifiedUniqueID(mi) != identity || fullName(mi) != path) ready = false
+        else {
+            ModName_ mr = module(path)
+            if (null mr) ready = false
+            else {
+                if (di_arg_action == "AddModuleBaselines" && (!null data(moduleVersion(mr)) || isLocked(mr) || !canCreate(mi) || !canModify(mi))) ready = false
+                put(moduleList, count++, mr)
+            }
+        }
+        path = ""; identity = ""; readingId = false
+    } else if (readingId) identity = identity c
+    else path = path c
+}
+if (count != intOf(di_arg_moduleCount) || path != "" || identity != "") ready = false
+if (ready && intOf(today()) >= intOf(di_arg_expires)) ready = false
+if (ready && di_arg_action == "CreateDefinition") {
+    attempted = true
+    err = create(parentFolder, di_arg_name, di_arg_description, bsd)
+    ready = null err && !null bsd
+}
+if (ready) {
+    err = lock(bsd)
+    owned = null err
+    ready = owned
+    if (!ready) reason = "DefinitionLockOrPermissionDenied"
+}
+if (ready) {
+    bool hasOpen = isAnyBaselineSetOpen(bsd)
+    if (hasOpen && (di_arg_action == "CreateMajorSet" || di_arg_action == "CreateMinorSet" || di_arg_action == "UpdateDefinition" || di_arg_action == "AddDefinitionModules" || di_arg_action == "RemoveDefinitionModules")) ready = false
+    if (!ready) reason = "OpenSetPreventsMutation"
+}
+if (ready && (di_arg_action == "AddModuleBaselines" || di_arg_action == "CloseSet")) {
+    BaselineSet candidateSet
+    for candidateSet in bsd do {
+        if (major(candidateSet) == intOf(di_arg_setMajor) && minor(candidateSet) == intOf(di_arg_setMinor) && suffix(candidateSet) == di_arg_setSuffix) bs = candidateSet
+    }
+    ready = !null bs
+    if (ready) ready = isOpen(bs)
+    ModName_ checkModule
+    if (ready && di_arg_action == "CloseSet") { for checkModule in bsd do { if (!isBaselinePresent(bs, checkModule)) ready = false } }
+    if (ready && di_arg_action == "AddModuleBaselines") {
+        int definitionCount = 0
+        for checkModule in bsd do {
+            definitionCount++
+            bool included = false
+            ModName_ selectedModule
+            for selectedModule in moduleList do { if (fullName(selectedModule) == fullName(checkModule)) included = true }
+            if (!included) ready = false
+        }
+        if (definitionCount != count) ready = false
+        for checkModule in moduleList do { if (isBaselinePresent(bs, checkModule)) ready = false }
+    }
+}
+if (ready && intOf(today()) >= intOf(di_arg_expires)) ready = false
+if (ready) {
+    attempted = true
+    if (di_arg_action == "CreateMajorSet" || di_arg_action == "CreateMinorSet") err = create(bsd, di_arg_action == "CreateMajorSet", di_arg_suffix, di_arg_annotation, bs)
+    else if (di_arg_action == "AddModuleBaselines") err = addBaselines(moduleList, bs)
+    else if (di_arg_action == "CloseSet") err = close(bs)
+    else {
+        if (di_arg_action == "UpdateDefinition") { err = rename(bsd, di_arg_name); if (null err) err = setDescription(bsd, di_arg_description) }
+        ModName_ mr
+        if (null err && (di_arg_action == "CreateDefinition" || di_arg_action == "AddDefinitionModules" || di_arg_action == "RemoveDefinitionModules")) {
+            for mr in moduleList do {
+                bool present = false
+                ModName_ definedModule
+                for definedModule in bsd do { if (fullName(definedModule) == fullName(mr)) present = true }
+                if (di_arg_action == "RemoveDefinitionModules") { if (present) err = removeModule(mr, bsd) }
+                else { if (!present) err = addModule(mr, bsd) }
+                if (!null err) break
+            }
+        }
+        if (null err) err = save(bsd)
+    }
+    if (null err) {
+        outcome = "Succeeded"; reason = "NativeOperationReturnedSuccess_PostReadVerificationRequired"
+        resultName = name(bsd)
+        if (!null bs) { resultMajor = major(bs) ""; resultMinor = minor(bs) ""; resultSuffix = suffix(bs) }
+    } else { outcome = "Unknown"; reason = err }
+}
+string nativeError = lastError()
+if (!null nativeError) { outcome = "Unknown"; reason = nativeError }
+if (owned) {
+    string unlockError = unlock(bsd)
+    if (!null unlockError) { outcome = "Unknown"; reason = "DefinitionUnlockFailed_InspectOwnership" }
+}
+if (attempted && outcome != "Succeeded") outcome = "Unknown"
+delete(moduleList)
+oleSetResult("NATIVE_BASELINE_SET_WRITE\t1\t" di_requestId "\t" outcome "\t" nswEscape(reason) "\t" nswEscape(resultName) "\t" resultMajor "\t" resultMinor "\t" nswEscape(resultSuffix) "\n")

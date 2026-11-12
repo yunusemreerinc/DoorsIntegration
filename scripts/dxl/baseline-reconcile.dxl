@@ -1,0 +1,44 @@
+// Read-only independent reconciliation of one exact baseline. NEVER creates or retries.
+// NOT_FOUND means absent OR unreadable; it is never permission to retry a write.
+string brResult = "UNKNOWN"
+Module brModule = null
+bool brOwned = false
+noError()
+if (getDatabaseIdentifier() == di_arg_database && doorsname() == di_arg_user) {
+    Item brItem = item(di_arg_path)
+    if (!null brItem && type(brItem) == "Formal" && !isDeleted(brItem) &&
+        fullName(brItem) == di_arg_path && qualifiedUniqueID(brItem) == di_arg_moduleId && canRead(brItem)) {
+        ModName_ brRef = module(di_arg_path)
+        if (!null brRef) {
+            brModule = data(moduleVersion(brRef))
+            if (null brModule) { brModule = load(moduleVersion(brRef), false); brOwned = !null brModule }
+            if (!null brModule && isRead(brModule) && !isBaseline(brModule) && !unsaved(brModule)) {
+                brResult = "NOT_FOUND_OR_UNREADABLE"
+                if (baselineExists(brModule, baseline(intOf(di_arg_major), intOf(di_arg_minor), di_arg_suffix))) {
+                    Baseline brB
+                    for brB in brModule do {
+                        if (major(brB) == intOf(di_arg_major) && minor(brB) == intOf(di_arg_minor) && suffix(brB) == di_arg_suffix) {
+                            brResult = "CONFLICT"
+                            if (annotation(brB) == di_arg_annotation && user(brB) == di_arg_user) brResult = "VERIFIED"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+string brError = lastError()
+if (!null brError) brResult = "UNKNOWN"
+if (brOwned && !null brModule) {
+    noError()
+    bool brClean = isRead(brModule) && !unsaved(brModule)
+    string brStateError = lastError()
+    noError()
+    if (brClean && null brStateError) {
+        bool brClosed = close(brModule, false)
+        if (!brClosed) brResult = "UNKNOWN"
+    } else brResult = "UNKNOWN"
+    string brCloseError = lastError()
+    if (!null brCloseError) brResult = "UNKNOWN"
+}
+oleSetResult("DOORS_BASELINE_RECONCILE\t1\t" di_requestId "\t" brResult "\n")

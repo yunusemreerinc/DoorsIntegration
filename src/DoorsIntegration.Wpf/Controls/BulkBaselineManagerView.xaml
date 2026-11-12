@@ -1,0 +1,82 @@
+<UserControl x:Class="DoorsIntegration.Wpf.Controls.BulkBaselineManagerView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:DoorsIntegration.Wpf.Controls">
+ <Grid Margin="4">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="170"/><RowDefinition Height="6"/><RowDefinition Height="330" MinHeight="240"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Border Padding="10,7" CornerRadius="5">
+   <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="#123953"/><Style.Triggers><DataTrigger Binding="{Binding IsReal}" Value="True"><Setter Property="Background" Value="#542E25"/></DataTrigger></Style.Triggers></Style></Border.Style>
+   <StackPanel><WrapPanel><TextBlock Text="Baseline Mode" Margin="4,7"/><ComboBox x:Name="ManagerMode" Width="245" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}" IsEnabled="{Binding IsIdle}"/></WrapPanel><TextBlock Text="{Binding ModeBanner}" FontWeight="Bold" FontSize="15"/><TextBlock Text="{Binding ReadOnlyLabel}" FontSize="11"/><TextBlock Text="{Binding Limitation}" Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap"/></StackPanel>
+  </Border>
+  <StackPanel Grid.Row="1" Margin="0,5,0,6" IsEnabled="{Binding IsIdle}">
+   <WrapPanel><TextBlock Text="Search" Margin="4,6"/><TextBox x:Name="ManagerSearch" Width="220" MaxLength="256" Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"/>
+    <Button Content="Select All (filtered)" Command="{Binding SelectAllCommand}"/><Button Content="Clear Selection" Command="{Binding ClearSelectionCommand}"/><CheckBox Content="Selected Only" IsChecked="{Binding SelectedOnly}"/>
+    <Button Content="Refresh" Command="{Binding RefreshCommand}"/><Button Content="Load More" Command="{Binding LoadMoreCommand}"/><TextBlock Text="{Binding Summary}" Margin="8,7"/></WrapPanel>
+   <WrapPanel><WrapPanel.Style><Style TargetType="WrapPanel"><Style.Triggers><DataTrigger Binding="{Binding IsNative}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></WrapPanel.Style><TextBlock Text="BaselineType" Margin="4,6"/><ComboBox Width="90" ItemsSource="{Binding BaselineTypes}" SelectedItem="{Binding BaselineType}"/>
+    <TextBlock Text="Suffix" Margin="12,6,3,0"/><TextBox Width="125" MaxLength="128" Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}"/>
+    <TextBlock Text="Policy" Margin="12,6,3,0"/><ComboBox Width="160" ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}"/>
+    <TextBlock Text="Annotation" Margin="12,6,3,0"/><TextBox Width="330" Height="45" MaxLength="16384" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Text="{Binding Annotation, UpdateSourceTrigger=PropertyChanged}"/></WrapPanel>
+   <TextBlock Text="{Binding Validation}" Foreground="#FFB8A8" TextWrapping="Wrap"/>
+   <WrapPanel><WrapPanel.Style><Style TargetType="WrapPanel"><Style.Triggers><DataTrigger Binding="{Binding IsNative}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></WrapPanel.Style><Button Content="Preflight / Dry Run" Command="{Binding PreflightCommand}"/><Button Content="Select Eligible" Command="{Binding SelectEligibleCommand}"/>
+    <Button x:Name="ManagerReview" Content="İncele ve Kesin Onayla" Command="{Binding ReviewCommand}"/><Button x:Name="ManagerExecute" Content="Execute" Command="{Binding ExecuteCommand}" Background="#126CA5"/>
+    <TextBlock Text="{Binding ApprovalLabel}" Margin="9,7" FontWeight="SemiBold"/></WrapPanel>
+  </StackPanel>
+  <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="300" MinWidth="230"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*" MinWidth="430"/></Grid.ColumnDefinitions>
+   <DockPanel Margin="0,0,8,0" IsEnabled="{Binding IsIdle}">
+    <StackPanel DockPanel.Dock="Top"><TextBlock Text="PROJECT / FOLDER TREE" FontWeight="SemiBold"/>
+     <TextBox Text="{Binding RootPath, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ağaç kökü / ile başlayan canonical path"/>
+     <DockPanel><Button DockPanel.Dock="Right" Content="Load Tree" Command="{Binding LoadTreeCommand}"/><TextBox Text="{Binding RepositoryId, UpdateSourceTrigger=PropertyChanged}" ToolTip="Repository scope label; stabil module identity ayrıca doğrulanır"/></DockPanel>
+     <Button Content="Discover Formal Modules" Command="{Binding DiscoverCommand}"/>
+    </StackPanel>
+    <TreeView x:Name="ManagerFolderTree" ItemsSource="{Binding Tree}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True">
+     <TreeView.ItemContainerStyle><Style TargetType="TreeViewItem"><Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/></Style></TreeView.ItemContainerStyle>
+     <TreeView.ItemTemplate><HierarchicalDataTemplate ItemsSource="{Binding Children}"><StackPanel>
+      <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding CanChoose}" ToolTip="{Binding Path}"/>
+      <WrapPanel><Button Content="+" Command="{Binding LoadCommand}" Padding="4,0" ToolTip="Alt proje/klasörleri lazy yükle"/><CheckBox Content="Include Subfolders" IsChecked="{Binding IncludeSubfolders}" FontSize="10"/></WrapPanel>
+     </StackPanel></HierarchicalDataTemplate></TreeView.ItemTemplate>
+    </TreeView>
+   </DockPanel>
+   <GridSplitter Grid.Column="1"/>
+   <DataGrid x:Name="ManagerModuleGrid" Grid.Column="2" ItemsSource="{Binding Rows}" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+    EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" IsEnabled="{Binding IsIdle}">
+    <DataGrid.Columns>
+     <DataGridTemplateColumn Header="✓" Width="35"><DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSelect}" HorizontalAlignment="Center"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+     <DataGridTextColumn Header="ModuleName" Binding="{Binding ModuleName}" Width="165"/><DataGridTextColumn Header="FullPath" Binding="{Binding FullPath}" Width="*" MinWidth="180"/>
+     <DataGridTextColumn Header="LastVersion" Binding="{Binding LastVersion}" Width="95"/><DataGridTextColumn Header="TargetVersion" Binding="{Binding TargetVersion}" Width="100"/>
+     <DataGridTextColumn Header="LockStatus" Binding="{Binding LockStatus}" Width="170"/><DataGridTextColumn Header="Eligibility" Binding="{Binding Eligibility}" Width="190"/>
+    </DataGrid.Columns>
+    <DataGrid.RowStyle><Style TargetType="DataGridRow"><Setter Property="ToolTip" Value="{Binding Details}"/></Style></DataGrid.RowStyle>
+   </DataGrid>
+  </Grid>
+  <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+  <TabControl Grid.Row="4" SelectedIndex="{Binding SelectedPane}"><TabControl.Style><Style TargetType="TabControl"><Style.Triggers><DataTrigger Binding="{Binding IsNative}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TabControl.Style>
+   <TabItem Header="Progress / Results"><DockPanel>
+    <WrapPanel DockPanel.Dock="Top"><Button x:Name="ManagerCancel" Content="Cancel Remaining" Command="{Binding CancelRemainingCommand}"/><Button Content="Reconcile (read-only)" Command="{Binding ReconcileCommand}"/>
+     <Button Content="Retry Selected (explicit review)" Command="{Binding RetryCommand}"/><ComboBox Width="75" ItemsSource="{Binding ExportFormats}" SelectedItem="{Binding ExportFormat}" IsEnabled="{Binding IsIdle}"/><Button Content="Export Result" Command="{Binding ExportResultCommand}"/><Button Content="Open Job History" Command="{Binding OpenHistoryCommand}"/></WrapPanel>
+    <StackPanel DockPanel.Dock="Top"><TextBlock Text="{Binding JobSummary}" FontSize="11"/><ProgressBar Height="5" Margin="3,5" Value="{Binding OverallProgress, Mode=OneWay}" Maximum="100" Foreground="#39A9F4" Background="#20374D"/></StackPanel>
+    <DataGrid x:Name="ManagerProgressGrid" ItemsSource="{Binding ProgressRows}" SelectedItem="{Binding SelectedProgress}" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True">
+     <DataGrid.Columns><DataGridTextColumn Header="Module" Binding="{Binding FullPath}" Width="*" MinWidth="220"/><DataGridTextColumn Header="Previous" Binding="{Binding Previous}" Width="100"/>
+      <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="100"/><DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="145"/><DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="85"/><DataGridTextColumn Header="Error / Outcome" Binding="{Binding Error}" Width="*" MinWidth="230"/></DataGrid.Columns>
+    </DataGrid>
+   </DockPanel></TabItem>
+   <TabItem Header="Job History / Export"><DockPanel>
+    <WrapPanel DockPanel.Dock="Top" IsEnabled="{Binding IsIdle}"><TextBlock Text="Search" Margin="4,6"/><TextBox Width="140" MaxLength="256" Text="{Binding HistorySearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="JobId / module / environment"/><TextBlock Text="Operator" Margin="4,6"/><TextBox Width="100" MaxLength="1024" Text="{Binding HistoryOperator}"/><TextBlock Text="Database" Margin="4,6"/><TextBox Width="130" MaxLength="4096" Text="{Binding HistoryDatabase}"/><TextBlock Text="Outcome" Margin="4,6"/><ComboBox Width="120" ItemsSource="{Binding HistoryOutcomes}" SelectedItem="{Binding HistoryOutcome}"/><TextBlock Text="From" Margin="4,6"/><DatePicker Width="110" SelectedDate="{Binding HistoryFrom}" ToolTip="Created from (local date)"/><TextBlock Text="Through" Margin="4,6"/><DatePicker Width="110" SelectedDate="{Binding HistoryTo}" ToolTip="Created through (local date)"/></WrapPanel>
+    <StackPanel DockPanel.Dock="Top"><WrapPanel><Button Content="Open Job History" Command="{Binding OpenHistoryCommand}"/><Button Content="Open Selected Job" Command="{Binding LoadJobCommand}"/><TextBlock Text="Aynı JobId açılır; Succeeded modüller yeniden oluşturulmaz." Margin="6,6"/></WrapPanel>
+     <WrapPanel><Button Content="Previous Page" Command="{Binding PreviousHistoryPageCommand}"/><TextBlock Text="{Binding HistoryPageLabel}" Margin="8,6"/><Button Content="Next Page" Command="{Binding NextHistoryPageCommand}"/></WrapPanel>
+     <DockPanel><TextBlock Text="Export root" Margin="4,7"/><TextBox Text="{Binding ExportRoot, UpdateSourceTrigger=PropertyChanged}"/></DockPanel></StackPanel>
+    <Button DockPanel.Dock="Top" Content="Read / re-report selected (no reconciliation)" Command="{Binding ReportHistoryCommand}"/>
+    <DataGrid x:Name="ManagerHistoryGrid" ItemsSource="{Binding HistoryItems}" SelectedItem="{Binding SelectedHistoryItem}" IsReadOnly="True" AutoGenerateColumns="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True">
+     <DataGrid.Columns><DataGridTextColumn Header="JobId" Binding="{Binding JobId}" Width="270"/><DataGridTextColumn Header="Outcome" Binding="{Binding Outcome}" Width="120"/><DataGridTextColumn Header="Operator" Binding="{Binding Operator}" Width="100"/><DataGridTextColumn Header="Database" Binding="{Binding Database}" Width="130"/><DataGridTextColumn Header="Counts" Binding="{Binding Counts}" Width="190"/><DataGridTextColumn Header="Updated UTC" Binding="{Binding UpdatedAtUtc, StringFormat=O}" Width="*"/></DataGrid.Columns>
+    </DataGrid>
+   </DockPanel></TabItem>
+   <TabItem Header="Audit Report"><DockPanel>
+    <WrapPanel DockPanel.Dock="Top"><ComboBox Width="75" ItemsSource="{Binding ExportFormats}" SelectedItem="{Binding ExportFormat}" IsEnabled="{Binding IsIdle}"/><Button Content="Export Report" Command="{Binding ExportResultCommand}"/><Button Content="Reconcile current job (read-only)" Command="{Binding ReconcileCommand}"/><TextBlock Text="{Binding AuditSummary}" Margin="7"/></WrapPanel>
+    <TextBlock DockPanel.Dock="Top" Text="{Binding AuditContextSummary}" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11" Margin="5"/>
+    <TextBlock DockPanel.Dock="Bottom" Text="{Binding AuditDisclosure}" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+    <DataGrid ItemsSource="{Binding AuditModules}" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True">
+     <DataGrid.Columns><DataGridTextColumn Header="Group" Binding="{Binding Group}" Width="105"/><DataGridTextColumn Header="Module" Binding="{Binding FullPath}" Width="*"/><DataGridTextColumn Header="Stable identity" Binding="{Binding StableIdentity}" Width="125"/><DataGridTextColumn Header="Previous" Binding="{Binding PreviousBaseline}" Width="90"/><DataGridTextColumn Header="Expected" Binding="{Binding ExpectedBaseline}" Width="90"/><DataGridTextColumn Header="Actual (verified)" Binding="{Binding ActualBaseline}" Width="110"/><DataGridTextColumn Header="Status" Binding="{Binding ResultStatus}" Width="145"/><DataGridTextColumn Header="Seconds" Binding="{Binding DurationSeconds}" Width="75"/><DataGridTextColumn Header="Error" Binding="{Binding ErrorMessage}" Width="*"/></DataGrid.Columns>
+    </DataGrid>
+   </DockPanel></TabItem>
+  </TabControl>
+  <local:NativeBaselineSetView Grid.Row="4" DataContext="{Binding Native}"><local:NativeBaselineSetView.Style><Style TargetType="local:NativeBaselineSetView"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding DataContext.IsNative, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></local:NativeBaselineSetView.Style></local:NativeBaselineSetView>
+  <TextBox Grid.Row="5" IsReadOnly="True" Text="{Binding Report, Mode=OneWay}" MaxHeight="65" MinHeight="35" FontSize="11" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,5,0,0"/>
+ </Grid>
+</UserControl>

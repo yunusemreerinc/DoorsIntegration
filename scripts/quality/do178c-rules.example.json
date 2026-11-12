@@ -1,0 +1,175 @@
+{
+    "approval":  null,
+    "exampleOnly":  true,
+    "id":  "example-do178c-quality",
+    "projectId":  "",
+    "projectReference":  "",
+    "revision":  "1",
+    "rules":  [
+                  {
+                      "direction":  "Outgoing",
+                      "enabled":  true,
+                      "evidenceFields":  [
+
+                                         ],
+                      "fields":  [
+                                     "Object Text"
+                                 ],
+                      "id":  "empty",
+                      "kind":  "EmptyRequirement",
+                      "linkModulePath":  "",
+                      "minimumCount":  1,
+                      "requiredNativeLinkModuleId":  null,
+                      "revision":  "1",
+                      "severity":  "Error",
+                      "suggestion":  "",
+                      "targetModules":  [
+
+                                        ],
+                      "terms":  [
+
+                                ],
+                      "versionPolicy":  "SameVersion"
+                  },
+                  {
+                      "direction":  "Outgoing",
+                      "enabled":  true,
+                      "evidenceFields":  [
+
+                                         ],
+                      "fields":  [
+                                     "Object Text"
+                                 ],
+                      "id":  "ambiguity",
+                      "kind":  "AmbiguousWords",
+                      "linkModulePath":  "",
+                      "minimumCount":  1,
+                      "requiredNativeLinkModuleId":  null,
+                      "revision":  "1",
+                      "severity":  "Warning",
+                      "suggestion":  "",
+                      "targetModules":  [
+
+                                        ],
+                      "terms":  [
+                                    "TBD",
+                                    "TBC",
+                                    "appropriate",
+                                    "as needed",
+                                    "etc",
+                                    "fast",
+                                    "uygun",
+                                    "gerektiğinde",
+                                    "hızlı"
+                                ],
+                      "versionPolicy":  "SameVersion"
+                  },
+                  {
+                      "direction":  "Outgoing",
+                      "enabled":  true,
+                      "evidenceFields":  [
+
+                                         ],
+                      "fields":  [
+                                     "Object Text"
+                                 ],
+                      "id":  "obligations",
+                      "kind":  "MultipleObligations",
+                      "linkModulePath":  "",
+                      "minimumCount":  2,
+                      "requiredNativeLinkModuleId":  null,
+                      "revision":  "1",
+                      "severity":  "Warning",
+                      "suggestion":  "",
+                      "targetModules":  [
+
+                                        ],
+                      "terms":  [
+                                    "shall",
+                                    "must",
+                                    "zorundadır",
+                                    "olmalıdır",
+                                    "yapmalıdır"
+                                ],
+                      "versionPolicy":  "SameVersion"
+                  },
+                  {
+                      "direction":  "Outgoing",
+                      "enabled":  true,
+                      "evidenceFields":  [
+                                             "Verification Method",
+                                             "Acceptance Criteria"
+                                         ],
+                      "fields":  [
+
+                                 ],
+                      "id":  "verifiability",
+                      "kind":  "Verifiability",
+                      "linkModulePath":  "",
+                      "minimumCount":  2,
+                      "requiredNativeLinkModuleId":  null,
+                      "revision":  "1",
+                      "severity":  "Warning",
+                      "suggestion":  "",
+                      "targetModules":  [
+
+                                        ],
+                      "terms":  [
+
+                                ],
+                      "versionPolicy":  "SameVersion"
+                  },
+                  {
+                      "direction":  "Outgoing",
+                      "enabled":  true,
+                      "evidenceFields":  [
+
+                                         ],
+                      "fields":  [
+                                     "Status"
+                                 ],
+                      "id":  "required",
+                      "kind":  "RequiredAttributes",
+                      "linkModulePath":  "",
+                      "minimumCount":  1,
+                      "requiredNativeLinkModuleId":  null,
+                      "revision":  "1",
+                      "severity":  "Error",
+                      "suggestion":  "",
+                      "targetModules":  [
+
+                                        ],
+                      "terms":  [
+
+                                ],
+                      "versionPolicy":  "SameVersion"
+                  },
+                  {
+                      "direction":  "Outgoing",
+                      "enabled":  true,
+                      "evidenceFields":  [
+
+                                         ],
+                      "fields":  [
+
+                                 ],
+                      "id":  "trace",
+                      "kind":  "Traceability",
+                      "linkModulePath":  "",
+                      "minimumCount":  1,
+                      "requiredNativeLinkModuleId":  null,
+                      "revision":  "1",
+                      "severity":  "Warning",
+                      "suggestion":  "",
+                      "targetModules":  [
+
+                                        ],
+                      "terms":  [
+
+                                ],
+                      "versionPolicy":  "SameVersion"
+                  }
+              ],
+    "schemaVersion":  1,
+    "standard":  "DO178C"
+}

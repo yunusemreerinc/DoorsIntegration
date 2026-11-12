@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Example evidence-presence checks. Running these checks does NOT qualify this or any other tool. -->
+<qualityProfile id="example-do330-tool-evidence-review-aids" revision="1" exampleOnly="true">
+  <rule id="ORG-330-EVIDENCE" revision="1" severity="Warning" kind="RequiredAll" standardContext="DO-330" projectReference="EXAMPLE-TOOL-PLANS">
+    <field>Tool Operational Requirement ID</field><field>Verification Evidence</field><field>Configuration Version</field><field>Review Evidence</field>
+  </rule>
+</qualityProfile>
