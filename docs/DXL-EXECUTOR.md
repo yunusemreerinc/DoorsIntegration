@@ -127,7 +127,7 @@ Kapanışta host `ActiveOperation?.Completion` bitmeden provider'ı/log sink'ini
 
 ## Workspace, limitler ve loglama
 
-Default workspace `%TEMP%\DoorsIntegration\Dxl\<request-id>` altındadır. Root `DxlWorkspaceFactory(root)` ile değiştirilebilir. Küçük sonuç ve hata yollarında worker kendi dosyalarını COM cleanup sonrasında temizler. Dosya sonuçlarının sahipliği `DxlExecutionResult`'a geçer; bu dosyalar result dispose edilene kadar yaşayabilir. Yalnızca `prepared.dxl`, `result.dat` ve boş işlem dizini silinir; scriptin oluşturduğu bilinmeyen dosyalar recursive silinmez. Cleanup hatası asıl hatayı örtmez; `WorkspaceDirectory` tamamlanan handle'da inceleme için kalır.
+Default workspace `%TEMP%\DoorsIntegration\Dxl\<request-id>` altındadır. Root `DxlWorkspaceFactory(root)` ile değiştirilebilir. Küçük sonuç ve hata yollarında worker kendi dosyalarını COM cleanup sonrasında temizler. Dosya sonuçlarının sahipliği `DxlExecutionResult`'a geçer; bu dosyalar result dispose edilene kadar yaşayabilir. Yalnızca `prepared.dxl`, `result.dat` ve boş işlem dizini silinir; scriptin oluşturduğu bilinmeyen dosyalar recursive silinmez. Cleanup hatası asıl hatayı örtmez; `WorkspaceDirectory` tamamlanan handle'da inceleme için kalır. Doğrulanmış tamamlanma yanıtı alındıktan sonra oluşan COM release veya workspace cleanup hataları sonucu başarısızlığa çevirmez: `DxlCleanupFailed` (`ResultAcknowledged=True`) olarak loglanır ve sonuç döner. Böylece DOORS'un tamamlayıp onayladığı bir yazma, yalnızca geçici dosya temizliği nedeniyle başarısız veya `OutcomeUnknown` raporlanmaz.
 
 | Limit | Varsayılan |
 | --- | --- |

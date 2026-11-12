@@ -136,6 +136,68 @@ namespace DoorsIntegration.Tests
         }
 
         [TestMethod]
+        public async Task ComReleaseFailureAfterAcknowledgedResultKeepsTheResult()
+        {
+            using (var context = new ExecutorTestContext())
+            {
+                context.Sessions.Session.DisposeFailure = new IntegrationException(IntegrationErrorCode.ComFailure, "cleanup failure");
+                var operation = context.Executor.Start(new DxlExecutionRequest(context.SourcePath));
+                using (var result = await operation.Completion)
+                {
+                    Assert.AreEqual("sample-result", result.Text);
+                    Assert.IsTrue(context.Sessions.Session.Disposed);
+                    Assert.IsFalse(context.Executor.IsBusy);
+                    Assert.IsFalse(Directory.Exists(operation.WorkspaceDirectory));
+                    Assert.IsTrue(context.Log.Entries.Any(entry => entry.StartsWith("DxlCleanupFailed:", StringComparison.Ordinal) &&
+                        entry.Contains("ResultAcknowledged=True")));
+                    Assert.IsFalse(context.Log.Entries.Any(entry => entry.StartsWith("DxlFailed:", StringComparison.Ordinal)));
+                }
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(DxlInvocationMethod.RunString)]
+        [DataRow(DxlInvocationMethod.RunFile)]
+        public async Task WorkspaceCleanupFailureAfterAcknowledgedResultKeepsTheResult(DxlInvocationMethod method)
+        {
+            using (var context = new ExecutorTestContext())
+            {
+                // A script-created file makes the non-recursive workspace delete fail after a successful run.
+                context.Sessions.Session.OnRun = session =>
+                    File.WriteAllText(Path.Combine(context.Executor.ActiveOperation.WorkspaceDirectory, "script-created.tmp"), "x");
+                var operation = context.Executor.Start(new DxlExecutionRequest(context.SourcePath, method));
+                using (var result = await operation.Completion)
+                {
+                    Assert.AreEqual("sample-result", result.Text);
+                    Assert.IsFalse(context.Executor.IsBusy);
+                    Assert.IsTrue(Directory.Exists(operation.WorkspaceDirectory));
+                    Assert.IsTrue(File.Exists(Path.Combine(operation.WorkspaceDirectory, "script-created.tmp")));
+                    Assert.IsTrue(context.Log.Entries.Any(entry => entry.StartsWith("DxlCleanupFailed:", StringComparison.Ordinal) &&
+                        entry.Contains("ResultAcknowledged=True")));
+                    Assert.IsFalse(context.Log.Entries.Any(entry => entry.StartsWith("DxlFailed:", StringComparison.Ordinal)));
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task ComReleaseFailureAfterAcknowledgedFileResultKeepsTheFile()
+        {
+            using (var context = new ExecutorTestContext())
+            {
+                context.Sessions.Session.FileResult = true;
+                context.Sessions.Session.DisposeFailure = new IntegrationException(IntegrationErrorCode.ComFailure, "cleanup failure");
+                context.Sessions.Session.OnRun = session => File.WriteAllBytes(context.ResultPath(context.Executor.ActiveOperation), new byte[] { 7 });
+                var operation = context.Executor.Start(new DxlExecutionRequest(context.SourcePath, resultMode: DxlResultMode.File));
+                var result = await operation.Completion;
+                using (var stream = result.OpenResultStream()) Assert.AreEqual(7, stream.ReadByte());
+                Assert.IsFalse(context.Executor.IsBusy);
+                result.Dispose();
+                Assert.IsFalse(Directory.Exists(operation.WorkspaceDirectory));
+                Assert.IsTrue(context.Log.Entries.Any(entry => entry.StartsWith("DxlCleanupFailed:", StringComparison.Ordinal)));
+            }
+        }
+
+        [TestMethod]
         public async Task TimeoutRetainsWorkerWorkspaceAndGateUntilActualCompletion()
         {
             using (var context = new ExecutorTestContext())
