@@ -40,9 +40,9 @@ Dependencies point the right way: `Dxl` and `Com` implement interfaces defined i
 | --- | --- | --- | --- |
 | 1 | A write DOORS confirmed could be reported as `OutcomeUnknown` after a cleanup error | High | Fixed in #2 |
 | 2 | Generated files and chat logs committed to the repository | Medium | Fixed in #1 |
-| 3 | Unused method blocks on async code | Low | Open |
-| 4 | WPF error handling depends on convention; window can get stuck open | Medium | Open |
-| 5 | Tab navigation uses hard-coded positions | Low | Open |
+| 3 | Unused method blocks on async code | Low | Fixed |
+| 4 | WPF error handling depends on convention; window can get stuck open | Medium | Fixed |
+| 5 | Tab navigation uses hard-coded positions | Low | Fixed |
 | 6 | Very long lines and hard-coded user-facing strings | Low | Open |
 | 7 | File result could be disposed twice on a failure path | Info | Fixed in #2 |
 
@@ -60,24 +60,26 @@ The write gateways turn an executor error into `OutcomeUnknown` and never retry 
 
 **Remaining:** the files are still in git history, so a clone is still about 45 MB. Shrinking it would require rewriting history and force-pushing.
 
-### 3. Unused method blocks on async code (open)
+### 3. Unused method blocks on async code (fixed)
 
-`BaselineManagerSession.History` (`src/DoorsIntegration.Wpf/Services/BaselineManagerSession.cs:39`) calls `.GetAwaiter().GetResult()` on an async query. Nothing calls it. If it were ever called from the UI thread it could deadlock.
+`BaselineManagerSession.History` called `.GetAwaiter().GetResult()` on an async query. Nothing called it. If it were ever called from the UI thread it could deadlock.
 
-**Suggested fix:** delete the method.
+**Fix:** the method was deleted. Callers use `JobHistory.QueryAsync` directly.
 
-### 4. WPF error handling (open)
+### 4. WPF error handling (fixed)
 
-- `UiCommand.Execute` is `async void` (`src/DoorsIntegration.Wpf/Infrastructure/Binding.cs:24`). Any exception a view model doesn't catch will crash the app. Today this relies on every view model handling its own errors.
-- In `MainWindow.OnClosing` (`src/DoorsIntegration.Wpf/MainWindow.xaml.cs:60`), if `PrepareCloseAsync` throws, `closeRequested` stays `true` and `allowClose` stays `false`. The window then can never be closed.
+- `UiCommand.Execute` is `async void` (ICommand contract). Any exception a view model didn't catch would crash the app.
+- In `MainWindow.OnClosing`, if `PrepareCloseAsync` threw, `closeRequested` stayed `true` and `allowClose` stayed `false`, so the window could never be closed.
 
-**Suggested fix:** catch and log exceptions in `UiCommand.Execute`. In `OnClosing`, use `try`/`finally` so the window can still close.
+**Fix:**
+- `UiCommand.Execute` now catches and logs (`Trace.TraceError`) anything that escapes. `ExecuteAsync` still propagates, so tests and hosts that await it see the exception.
+- `OnClosing` uses `try`/`catch`/`finally`, so the window always closes. The `Closed` handler moved to `OnClosed`. It logs the `InvalidOperationException` that `WorkspaceViewModel.Dispose` throws when work is still running, which can only happen after a failed prepare, instead of crashing on exit.
 
-### 5. Hard-coded tab positions (open)
+### 5. Hard-coded tab positions (fixed)
 
-`src/DoorsIntegration.Wpf/MainWindow.xaml.cs:57` maps dashboard destinations to tab numbers (0, 1, 5, 8, 9, 10). Adding or reordering a tab silently breaks navigation.
+`MainWindow` mapped dashboard destinations to tab numbers (0, 1, 5, 8, 9, 10). Adding or reordering a tab would silently break navigation.
 
-**Suggested fix:** select tabs by name, as `OnPlanViewRequested` already does with `BulkDryRunTab`.
+**Fix:** the target tabs now have `x:Name`s (`WorkspaceTab`, `BaselineDiffTab`, `OperationsTab`, `BulkBaselineManagerTab`, `BaselineTraceabilityTab`, `ChangeImpactTab`). `OnDashboardNavigation` and `OnFindSelection` select them by reference. The mapping is unchanged.
 
 ### 6. Readability (open)
 
@@ -92,6 +94,10 @@ The write gateways turn an executor error into `OutcomeUnknown` and never retry 
 The executor could dispose a file-mode result twice on a failure path. This was harmless as long as `Dispose` stayed idempotent. The restructured cleanup in pull request #2 removed that path.
 
 ## Verification status
+
+**Fixes for #3–#5 (2026-11-13):** `.\scripts\Build.ps1 -Platform x86` was run on Windows with 0 warnings and 0 errors. Tests: 1,677 passed, 0 failed, 69 skipped (1,746 total). The WPF close and navigation changes have not been exercised by hand against a real DOORS client.
+
+Original review:
 
 - **Windows build and tests:** not run. Run `.\scripts\Build.ps1 -Platform x86` on Windows to build and run the full suite.
 - **`DoorsIntegration.Dxl`:** builds for net48 on Linux with 0 warnings (`TreatWarningsAsErrors`).

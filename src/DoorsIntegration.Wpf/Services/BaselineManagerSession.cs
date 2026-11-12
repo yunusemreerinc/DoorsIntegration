@@ -36,11 +36,6 @@ namespace DoorsIntegration.Wpf.Services
         public IBulkBaselineJobJournal Journal { get; }
         public BulkBaselineJournalOptions Storage { get; }
         public BaselineManagerApproval Approval { get; }
-        public IReadOnlyList<BulkBaselineJobRecord> History(string repository, CancellationToken token)
-        {
-            return JobHistory.QueryAsync(new BaselineJobHistoryFilter(source: Mode == ClientMode.Mock ? BaselineMetadataSource.Mock : BaselineMetadataSource.NativeDxl,
-                repository: repository, target: Version, limit: 1000), token).GetAwaiter().GetResult().Items.Select(i => i.Snapshot).ToArray();
-        }
         public static BaselineManagerSession Create(ClientProfile profile, IIntegrationLogger logger, IClientReview dialog, string storageRoot,
             Func<bool> allowed, IDoorsHierarchyReader hierarchy, IDxlExecutor executor = null, IBaselineJournalProtector protector = null)
         {
