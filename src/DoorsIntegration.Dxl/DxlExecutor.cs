@@ -147,30 +147,27 @@ namespace DoorsIntegration.Dxl
             }
             finally
             {
+                // A non-null result means DOORS returned a validated completion envelope: the script,
+                // including any database write, has finished and been acknowledged. Cleanup problems
+                // from here on are logged but never turn that acknowledged outcome into a failure;
+                // otherwise a completed write would be reported as failed/unknown. On failure paths
+                // cleanup problems are logged and the primary failure is kept.
                 try { session?.Dispose(); }
-                catch (Exception ex) { RecordCleanupFailure(ex, operation, ref failure); }
+                catch (Exception ex) { RecordCleanupFailure(ex, operation, result != null); }
 
-                if (result != null && result.IsFile)
-                {
-                    // Transfer workspace ownership only after COM cleanup succeeds.
-                    if (failure != null)
-                    {
-                        try { result.Dispose(); }
-                        catch (Exception ex) { RecordCleanupFailure(ex, operation, ref failure); }
-                    }
-                    workspace = null;
-                }
+                // A validated file result owns the workspace from here on and cleans it up on Dispose.
+                if (result != null && result.IsFile) workspace = null;
                 try { workspace?.Dispose(); }
-                catch (Exception ex) { RecordCleanupFailure(ex, operation, ref failure); }
+                catch (Exception ex) { RecordCleanupFailure(ex, operation, result != null); }
                 Volatile.Write(ref activeOperation, null);
                 try { lease.Dispose(); }
-                catch (Exception ex) { RecordCleanupFailure(ex, operation, ref failure); }
+                catch (Exception ex) { RecordCleanupFailure(ex, operation, result != null); }
             }
 
             if (failure != null)
             {
                 try { result?.Dispose(); }
-                catch (Exception ex) { RecordCleanupFailure(ex, operation, ref failure); }
+                catch (Exception ex) { RecordCleanupFailure(ex, operation, false); }
                 DxlLog.Write(logger, IntegrationLogLevel.Error, "DxlFailed", operation.CorrelationId,
                     "Code=" + failure.Code + "; ExceptionType=" + failure.GetBaseException().GetType().FullName +
                     "; HResult=0x" + failure.GetBaseException().HResult.ToString("X8") + "; ElapsedMs=" + elapsed.ElapsedMilliseconds);
@@ -184,11 +181,11 @@ namespace DoorsIntegration.Dxl
             }
         }
 
-        private void RecordCleanupFailure(Exception exception, DxlExecutionOperation operation, ref IntegrationException failure)
+        private void RecordCleanupFailure(Exception exception, DxlExecutionOperation operation, bool resultAcknowledged)
         {
-            if (failure == null) failure = Normalize(exception);
             DxlLog.Write(logger, IntegrationLogLevel.Error, "DxlCleanupFailed", operation.CorrelationId,
-                "ExceptionType=" + exception.GetType().FullName + "; HResult=0x" + exception.HResult.ToString("X8"));
+                "ExceptionType=" + exception.GetType().FullName + "; HResult=0x" + exception.HResult.ToString("X8") +
+                "; ResultAcknowledged=" + resultAcknowledged);
         }
 
         private static IntegrationException Normalize(Exception exception) => exception as IntegrationException ??
