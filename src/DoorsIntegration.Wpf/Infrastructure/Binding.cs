@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -21,7 +22,13 @@ namespace DoorsIntegration.Wpf.Infrastructure
         public UiCommand(Func<Task> execute, Func<bool> canExecute) { this.execute = execute; this.canExecute = canExecute; }
         public bool CanExecute(object parameter) => canExecute();
         // View-model operations own centralized exception handling. Expose Task for deterministic hosts/tests.
-        public async void Execute(object parameter) { await ExecuteAsync(); }
+        // Execute is async void (ICommand contract), so anything a view model misses is logged here
+        // instead of escaping to the dispatcher and terminating the process.
+        public async void Execute(object parameter)
+        {
+            try { await ExecuteAsync(); }
+            catch (Exception ex) { Trace.TraceError("UiCommand unhandled exception: " + ex); }
+        }
         public Task ExecuteAsync() => CanExecute(null) ? execute() : Task.CompletedTask;
         public event EventHandler CanExecuteChanged;
         public void Refresh() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);

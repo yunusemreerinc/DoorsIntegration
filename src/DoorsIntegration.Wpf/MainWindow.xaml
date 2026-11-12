@@ -19,7 +19,7 @@
         </WrapPanel>
         <TextBlock Grid.Row="2" Text="{Binding ProfileDescription}" Style="{StaticResource MutedText}" Margin="3,6,0,12"/>
         <TabControl Grid.Row="3" x:Name="WorkspaceTabs">
-            <TabItem Header="Workspace">
+            <TabItem x:Name="WorkspaceTab" Header="Workspace">
                 <Grid IsEnabled="{Binding IsIdle}">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="235" MinWidth="180"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*" MinWidth="360"/><ColumnDefinition Width="6"/><ColumnDefinition Width="335" MinWidth="270"/></Grid.ColumnDefinitions>
                     <DockPanel Margin="0,0,7,0">
@@ -68,7 +68,7 @@
                     </DockPanel>
                 </Grid>
             </TabItem>
-            <TabItem Header="Baseline diff">
+            <TabItem x:Name="BaselineDiffTab" Header="Baseline diff">
                 <DockPanel IsEnabled="{Binding IsIdle}">
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Text="İki mevcut baseline · aynı native modül kimliği · salt okunur" FontSize="17" Margin="4,2,0,8"/>
@@ -115,7 +115,7 @@
                     <TextBox Text="{Binding LastExportPath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="60"/>
                 </StackPanel>
             </TabItem>
-            <TabItem Header="İşlemler &amp; Settings">
+            <TabItem x:Name="OperationsTab" Header="İşlemler &amp; Settings">
                 <controls:OperationsView DataContext="{Binding Tools}" IsEnabled="{Binding IsIdle}"/>
             </TabItem>
             <TabItem Header="Bulk baseline / Modül seçimi">
@@ -124,11 +124,11 @@
             <TabItem x:Name="BulkDryRunTab" Header="Bulk baseline / Dry run">
                 <Grid IsEnabled="{Binding IsIdle}"><controls:BulkBaselinePreflightView DataContext="{Binding BulkSelection}"/></Grid>
             </TabItem>
-            <TabItem Header="Bulk Baseline Manager">
+            <TabItem x:Name="BulkBaselineManagerTab" Header="Bulk Baseline Manager">
                 <controls:BulkBaselineManagerView DataContext="{Binding BaselineManager}"/>
             </TabItem>
-            <TabItem Header="Baseline Traceability"><controls:BaselineTraceabilityView DataContext="{Binding BaselineTraceability}"/></TabItem>
-            <TabItem Header="Change Impact Analysis"><controls:ChangeImpactView DataContext="{Binding ChangeImpact}"/></TabItem>
+            <TabItem x:Name="BaselineTraceabilityTab" Header="Baseline Traceability"><controls:BaselineTraceabilityView DataContext="{Binding BaselineTraceability}"/></TabItem>
+            <TabItem x:Name="ChangeImpactTab" Header="Change Impact Analysis"><controls:ChangeImpactView DataContext="{Binding ChangeImpact}"/></TabItem>
             <TabItem Header="Configuration Dashboard"><controls:ConfigurationDashboardView DataContext="{Binding Dashboard}"/></TabItem>
         </TabControl>
         <Grid Grid.Row="4" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>

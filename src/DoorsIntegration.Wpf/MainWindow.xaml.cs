@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,7 +31,7 @@ namespace DoorsIntegration.Wpf
             {
                 if (model.Mode == ClientMode.Mock) { await model.DiscoverCommand.ExecuteAsync(); await model.ReadCommand.ExecuteAsync(); }
             };
-            Closing += OnClosing; Closed += (sender, args) => { model.BulkSelection.PlanViewRequested -= OnPlanViewRequested; model.DashboardNavigationRequested -= OnDashboardNavigation; model.FindSelectionRequested -= OnFindSelection; model.GoToSelectionRequested -= OnFindSelection; model.Dispose(); };
+            Closing += OnClosing; Closed += OnClosed;
         }
         private void OnGoTo(object sender,ExecutedRoutedEventArgs args)
         {
@@ -47,14 +48,27 @@ namespace DoorsIntegration.Wpf
         }
         private void OnFindSelection(RequirementListRow row)
         {
-            WorkspaceTabs.SelectedIndex=0;
+            WorkspaceTabs.SelectedItem=WorkspaceTab;
             _=Dispatcher.BeginInvoke(new Action(()=> { if(!closeRequested&&ReferenceEquals(model.SelectedRequirement,row)) RequirementsGrid.ScrollIntoView(row); }),DispatcherPriority.Loaded);
         }
         private void OnDashboardNavigation(DashboardDestination destination)
         {
             DashboardContextExpander.IsExpanded=true;
-            // Stable existing tab order; the dashboard is appended after Task 1–30 tabs.
-            WorkspaceTabs.SelectedIndex = destination==DashboardDestination.ModuleExplorer?0:destination==DashboardDestination.BaselineCompare?1:destination==DashboardDestination.TraceabilityExplorer?9:destination==DashboardDestination.ImpactAnalysis?10:destination==DashboardDestination.BulkBaseline||destination==DashboardDestination.JobHistory?8:5;
+            // Select by name so adding or reordering tabs cannot silently retarget navigation.
+            WorkspaceTabs.SelectedItem = DashboardTab(destination);
+        }
+        private TabItem DashboardTab(DashboardDestination destination)
+        {
+            switch (destination)
+            {
+                case DashboardDestination.ModuleExplorer: return WorkspaceTab;
+                case DashboardDestination.BaselineCompare: return BaselineDiffTab;
+                case DashboardDestination.TraceabilityExplorer: return BaselineTraceabilityTab;
+                case DashboardDestination.ImpactAnalysis: return ChangeImpactTab;
+                case DashboardDestination.BulkBaseline:
+                case DashboardDestination.JobHistory: return BulkBaselineManagerTab;
+                default: return OperationsTab;
+            }
         }
         private void OnPlanViewRequested() { WorkspaceTabs.SelectedItem = BulkDryRunTab; }
         private async void OnClosing(object sender, CancelEventArgs args)
@@ -63,8 +77,22 @@ namespace DoorsIntegration.Wpf
             args.Cancel = true;
             if (closeRequested) return;
             closeRequested = true;
-            await model.PrepareCloseAsync(); allowClose = true;
-            _ = Dispatcher.BeginInvoke(new Action(Close));
+            // Always reach allowClose: if preparation fails, the window must still be closable.
+            try { await model.PrepareCloseAsync(); }
+            catch (Exception ex) { Trace.TraceError("PrepareCloseAsync failed; closing anyway: " + ex); }
+            finally
+            {
+                allowClose = true;
+                _ = Dispatcher.BeginInvoke(new Action(Close));
+            }
+        }
+        private void OnClosed(object sender, EventArgs args)
+        {
+            model.BulkSelection.PlanViewRequested -= OnPlanViewRequested; model.DashboardNavigationRequested -= OnDashboardNavigation;
+            model.FindSelectionRequested -= OnFindSelection; model.GoToSelectionRequested -= OnFindSelection;
+            // Dispose throws if work is still running, which only happens when PrepareCloseAsync failed above.
+            try { model.Dispose(); }
+            catch (InvalidOperationException ex) { Trace.TraceError("Workspace dispose skipped at close: " + ex); }
         }
         private void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> args)
         {
